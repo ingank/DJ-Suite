@@ -16,7 +16,7 @@ from pathlib import Path
 from mutagen.flac import FLAC
 import uuid
 
-AUDIO_EXTENSIONS = ['.wav', '.aiff', '.mp3', '.flac', '.m4a', '.ogg']
+AUDIO_EXTENSIONS = ['.wav', '.aiff', '.mp3', '.flac']
 
 IN_DIR = Path('.')
 OUT_DIR = IN_DIR / "STAGE"
