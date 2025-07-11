@@ -1,5 +1,5 @@
 """
-gen1.py
+stage.py
 
 Konvertiert alle Audiodateien im aktuellen Verzeichnis in hochwertige FLACs (24bit/44.1kHz, soxr-Resampler)
 und speichert sie im Unterordner GEN1/.
