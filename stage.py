@@ -6,7 +6,7 @@ und speichert sie im Unterordner GEN1/.
 Jede Datei erhält eine RFC4122-konforme UUID (aus SHA256 der Datei, first 16 bytes), 
 und den Originaldateinamen - beide mit "GEN0-" Präfix als Tag.
 
-Autor: [Dein Name]
+Autor: [Ingolf Ankert]
 Version: 1.1
 """
 
