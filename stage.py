@@ -19,8 +19,9 @@ import uuid
 AUDIO_EXTENSIONS = ['.wav', '.aiff', '.mp3', '.flac', '.m4a', '.ogg']
 
 IN_DIR = Path('.')
-OUT_DIR = IN_DIR / "GEN1"
+OUT_DIR = IN_DIR / "STAGE"
 OUT_DIR.mkdir(exist_ok=True)
+
 
 def file_uuid128(fname):
     h = hashlib.sha256()
