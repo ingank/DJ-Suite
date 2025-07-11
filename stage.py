@@ -32,6 +32,15 @@ def file_uuid128(fname):
     file_uuid = uuid.UUID(bytes=uuid_bytes)
     return str(file_uuid)
 
+
+def ensure_flac_comment_tag(output_file):
+    flac_file = FLAC(output_file)
+    if "description" in flac_file:
+        flac_file["COMMENT"] = flac_file["description"]
+        del flac_file["description"]
+        flac_file.save()
+
+
 for file in IN_DIR.iterdir():
     if file.is_file() and file.suffix.lower() in AUDIO_EXTENSIONS:
         outname = f"{file.stem}{file.suffix}.flac"
@@ -50,6 +59,8 @@ for file in IN_DIR.iterdir():
             "-af", "aresample=resampler=soxr",
             str(outpath)
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        ensure_flac_comment_tag(str(outpath))
 
         # 3. Tags mit GEN0-Präfix in FLAC schreiben
         audio = FLAC(outpath)
