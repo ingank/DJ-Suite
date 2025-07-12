@@ -2,13 +2,14 @@
 stage.py
 
 Konvertiert alle Audiodateien im aktuellen Verzeichnis in hochwertige FLACs (24bit/44.1kHz, soxr-Resampler)
-und speichert sie im Unterordner GEN1/.
-Jede Datei erhält eine RFC4122-konforme UUID (aus SHA256 der Datei, first 16 bytes), 
-und den Originaldateinamen - beide mit "GEN0-" Präfix als Tag.
+und speichert sie im Unterordner STAGE/.
+Die eindeutige GEN0-ID (SHA256 des 16bit PCM-RAW-Streams, CD-Format),
+sowie der Originaldateiname, LUFS und LRA werden als Tags geschrieben.
 
 Autor: [Ingolf Ankert]
-Version: 1.1
+Version: 1.3
 """
+
 import os
 import re
 import hashlib
@@ -26,7 +27,7 @@ OUT_DIR.mkdir(exist_ok=True)
 def sound_params(file):
     """
     Extrahiert aus einer Audiodatei (nur erster Audiostream):
-      - SHA256-Hash des 16bit PCM RAW-Streams (Stereo, 44.1kHz)
+      - SHA256-Hash des 16bit PCM RAW-Streams (Stereo, 44.1kHz, CD-Format)
       - Integrated Loudness (LUFS)
       - Loudness Range (LRA)
     Gibt (sha256_hex, lufs, lra) zurück.
@@ -34,7 +35,7 @@ def sound_params(file):
     with tempfile.NamedTemporaryFile(suffix='.raw', delete=False) as tmpfile:
         tmp_raw = tmpfile.name
     try:
-        # 1. PCM-RAW aus Datei extrahieren
+        # 1. PCM-RAW aus Datei extrahieren (CD-Format, 16bit)
         subprocess.run([
             'ffmpeg', '-y', '-i', str(file),
             '-map', '0:a:0',
@@ -46,7 +47,7 @@ def sound_params(file):
         with open(tmp_raw, 'rb') as f:
             sha256_hex = hashlib.sha256(f.read()).hexdigest()
 
-        # 3. Loudness-Analyse mit ffmpeg (auf dem PCM-Stream)
+        # 3. Loudness-Analyse mit ffmpeg (auf dem 16bit-PCM-Stream)
         result = subprocess.run([
             'ffmpeg', '-f', 's16le', '-ar', '44100', '-ac', '2', '-i', tmp_raw,
             '-filter_complex', 'ebur128=framelog=quiet',
@@ -80,16 +81,16 @@ for file in IN_DIR.iterdir():
 
         print(f"Konvertiere {file} → {outname}")
 
-        # 1. Transkodieren in hochwertige FLAC-Datei
+        # 1. Transkodieren in hochwertige FLAC-Datei (24bit!)
         subprocess.run([
             "ffmpeg", "-y", "-i", str(file),
             "-ar", "44100", "-ac", "2",
-            "-sample_fmt", "s32",         # ffmpeg: für FLAC ist s32 = 24 bit
+            "-sample_fmt", "s32",  # 24bit FLAC (ffmpeg verwendet s32)
             "-af", "aresample=resampler=soxr",
             str(outpath)
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # 2. Analyse: SHA256, Loudness, Loudness Range aus PCM-Stream
+        # 2. Analyse: SHA256, Loudness, Loudness Range aus 16bit PCM-Stream
         gen0_id, lufs, lra = sound_params(file)
 
         # 3. Tags schreiben
