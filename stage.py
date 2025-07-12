@@ -81,6 +81,7 @@ for file in IN_DIR.iterdir():
         subprocess.run([
             "ffmpeg", "-y", "-i", str(file),
             "-ar", "44100", "-ac", "2",
+            "-sample_fmt", "s32",         # ffmpeg: für FLAC ist s32 = 24 bit
             "-af", "aresample=resampler=soxr",
             str(outpath)
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
