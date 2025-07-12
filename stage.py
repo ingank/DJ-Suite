@@ -9,7 +9,8 @@ und den Originaldateinamen - beide mit "GEN0-" Präfix als Tag.
 Autor: [Ingolf Ankert]
 Version: 1.1
 """
-
+import os
+import re
 import hashlib
 import subprocess
 import tempfile
@@ -20,6 +21,7 @@ AUDIO_EXTENSIONS = ['.wav', '.aiff', '.mp3', '.flac']
 IN_DIR = Path('.')
 OUT_DIR = IN_DIR / "STAGE"
 OUT_DIR.mkdir(exist_ok=True)
+
 
 def sound_params(file):
     """
@@ -69,6 +71,7 @@ def sound_params(file):
     finally:
         if os.path.exists(tmp_raw):
             os.remove(tmp_raw)
+
 
 for file in IN_DIR.iterdir():
     if file.is_file() and file.suffix.lower() in AUDIO_EXTENSIONS:
