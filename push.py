@@ -8,7 +8,7 @@ Der COMMENT-Tag wird nach dem Kopieren korrigiert (description → COMMENT).
 Bestehende Dateien werden überschrieben.
 
 Autor: [Ingolf Ankert]
-Version: 1.1
+Version: 1.2
 """
 
 import os
@@ -18,6 +18,7 @@ import subprocess
 
 TARGET_LUFS = -21.0  # Ziel-Lautheit für die Normalisierung
 
+
 def get_engine_base_dir():
     home = Path.home()
     music = home / "Music"
@@ -25,13 +26,19 @@ def get_engine_base_dir():
     engine_base.mkdir(parents=True, exist_ok=True)
     return engine_base
 
-def ensure_flac_comment_tag(output_file):
-    """Korrigiert Kommentar-Tag: description → COMMENT"""
-    flac_file = FLAC(output_file)
+
+def ensure_flac_comment_tag(file):
+    """
+    Korrigiert Kommentar-Tag für FLAC-Kompatibilität:
+    Falls das Feld 'description' existiert,
+    wird dessen Inhalt ins Standardfeld 'COMMENT' übertragen.
+    Dadurch ist der Kommentar in allen Playern und Tag-Editoren sichtbar.
+    """
+    flac_file = FLAC(file)
     if "description" in flac_file:
         flac_file["COMMENT"] = flac_file["description"]
-        del flac_file["description"]
         flac_file.save()
+
 
 def normalize_file(file, lufs_diff, output_file):
     """
@@ -43,8 +50,10 @@ def normalize_file(file, lufs_diff, output_file):
         'ffmpeg', '-y', '-i', str(file),
         '-af', f'volume={lufs_diff}dB',
         '-c:a', 'flac',
+        "-sample_fmt", "s32",  # 24bit FLAC (ffmpeg verwendet s32)
         str(output_file)
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+
 
 STAGE_DIR = Path(".")
 OUT_DIR = get_engine_base_dir()
@@ -55,14 +64,16 @@ for flac_file in STAGE_DIR.glob("*.flac"):
         gen0_id = audio.get("GEN0-ID", [None])[0]
         gen0_lufs = audio.get("GEN0-LUFS", [None])[0]
         if not gen0_id or gen0_lufs is None:
-            print(f"Kein GEN0-ID oder GEN0-LUFS Tag in {flac_file} – übersprungen.")
+            print(
+                f"Kein GEN0-ID oder GEN0-LUFS Tag in {flac_file} – übersprungen.")
             continue
 
         dest_file = OUT_DIR / f"{gen0_id}.flac"
         lufs_diff = TARGET_LUFS - float(gen0_lufs)
         normalize_file(flac_file, lufs_diff, dest_file)
         ensure_flac_comment_tag(dest_file)
-        print(f"Normalisiert & kopiert: {flac_file.name} → {dest_file.name} (Delta: {lufs_diff:+.1f} dB)")
+        print(
+            f"Normalisiert & kopiert: {flac_file.name} → {dest_file.name} (Delta: {lufs_diff:+.1f} dB)")
     except Exception as e:
         print(f"Fehler bei {flac_file}: {e}")
 
