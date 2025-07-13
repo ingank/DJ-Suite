@@ -5,9 +5,10 @@ Konvertiert alle Audiodateien im aktuellen Verzeichnis in hochwertige FLACs (24b
 und speichert sie im Unterordner STAGE/.
 Die eindeutige GEN0-ID (SHA256 des 16bit PCM-RAW-Streams, CD-Format),
 sowie der Originaldateiname, LUFS und LRA werden als Tags geschrieben.
+Außerdem wird (soweit vorhanden) der FLAC-Tag 'description' in das Standardfeld 'COMMENT' übertragen.
 
 Autor: [Ingolf Ankert]
-Version: 1.3
+Version: 1.4
 """
 
 import os
@@ -22,6 +23,19 @@ AUDIO_EXTENSIONS = ['.wav', '.aiff', '.mp3', '.flac']
 IN_DIR = Path('.')
 OUT_DIR = IN_DIR / "STAGE"
 OUT_DIR.mkdir(exist_ok=True)
+
+
+def ensure_flac_comment_tag(file):
+    """
+    Korrigiert Kommentar-Tag für FLAC-Kompatibilität:
+    Falls das Feld 'description' existiert,
+    wird dessen Inhalt ins Standardfeld 'COMMENT' übertragen.
+    Dadurch ist der Kommentar in allen Playern und Tag-Editoren sichtbar.
+    """
+    flac_file = FLAC(file)
+    if "description" in flac_file:
+        flac_file["COMMENT"] = flac_file["description"]
+        flac_file.save()
 
 
 def sound_params(file):
@@ -90,10 +104,13 @@ for file in IN_DIR.iterdir():
             str(outpath)
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # 2. Analyse: SHA256, Loudness, Loudness Range aus 16bit PCM-Stream
+        # 2. Kommentar-Tag ggf. korrigieren
+        ensure_flac_comment_tag(outpath)
+
+        # 3. Analyse: SHA256, Loudness, Loudness Range aus 16bit PCM-Stream
         gen0_id, lufs, lra = sound_params(file)
 
-        # 3. Tags schreiben
+        # 4. Tags schreiben
         audio = FLAC(outpath)
         audio["GEN0-ID"] = gen0_id
         audio["GEN0-FILENAME"] = file.name
