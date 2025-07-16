@@ -78,6 +78,13 @@ def ensure_flac_comment_tag(file):
         flac_file.save()
 
 
+def set_flac_tags(flac_path, sha256, orig_file):
+    audio = FLAC(flac_path)
+    audio["GEN0-SHA256"] = sha256
+    audio["GEN0-FILE"] = orig_file
+    audio.save()
+
+
 def convert_to_flac(src, dst_flac, mp3_mode=False):
     # MP3 → FLAC: Immer 16 Bit, soxr-Resampler, Dither aktiviert
     # Andere Formate: Original-Bittiefe, soxr-Resampler
@@ -121,9 +128,11 @@ def main():
     for filepath in scan_audio_files('.'):
         print(filepath.as_posix())
         try:
+            orig_filepath = filepath
             sha256 = pcm_sha256_pipe(filepath)
             print(f"  GEN0-SHA256: {sha256}")
             if hash_lookup and sha256 in hash_lookup:
+                orig_filepath = hash_lookup[sha256]
                 print(f"  GEN0-FILE:  {hash_lookup[sha256]}")
 
             # Zielpfad (Dateiname bleibt, immer .flac)
@@ -139,6 +148,7 @@ def main():
                 print(f"  [Konvertiert zu FLAC: {target.name}]")
             # Kommentar-Tag kopieren
             ensure_flac_comment_tag(target)
+            set_flac_tags(target, sha256, str(orig_filepath))
         except Exception as e:
             print(f"  [Fehler: {e}]")
 
