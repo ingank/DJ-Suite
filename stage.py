@@ -75,6 +75,7 @@ def ensure_flac_comment_tag(file):
     flac_file = FLAC(file)
     if "description" in flac_file:
         flac_file["COMMENT"] = flac_file["description"]
+        del flac_file["description"]
         flac_file.save()
 
 
