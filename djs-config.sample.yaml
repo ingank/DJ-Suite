@@ -1,0 +1,10 @@
+audio_extensions:
+  - .wav
+  - .aiff
+  - .aifc
+  - .mp3
+  - .flac
+
+archiv_root: "~/Music/ARCHIV"
+stage_root: "~/Music/STAGE"
+engine_base: "~/Music/Engine Base"
