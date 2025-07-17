@@ -64,11 +64,8 @@ def load_hashfile(hashfile_path):
 
 
 def ensure_stage_folder():
-    user = getpass.getuser()
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    # Windows: User Music
-    stage_dir = Path(os.path.expandvars(
-        f"%USERPROFILE%/Music/STAGE/{time_str}"))
+    stage_dir = Path(STAGE_ROOT) / "INPUT" / time_str
     stage_dir.mkdir(parents=True, exist_ok=True)
     return stage_dir
 
@@ -87,21 +84,12 @@ def ensure_flac_comment_tag(file):
         flac_file.save()
 
 
-def set_flac_tags(flac_path, sha256, orig_file):
-    audio = FLAC(flac_path)
-    audio["GEN0-SHA256"] = sha256
-    # Bestimme das Original-Format (Dateiendung ohne Punkt, klein)
-    orig_ext = Path(orig_file).suffix.lower().lstrip('.')
-    audio["GEN0-TYPE"] = orig_ext
-    audio.save()
-
-
 def convert_to_flac(src, dst_flac, mp3_mode=False):
     # MP3 → FLAC: Immer 16 Bit, soxr-Resampler, Dither aktiviert
     # Andere Formate: Original-Bittiefe, soxr-Resampler
     ffmpeg_cmd = [
         'ffmpeg', '-y', '-i', str(src),
-        '-vn', '-c:a', 'flac'
+        '-c:a', 'flac'
     ]
     if mp3_mode:
         # 16 Bit + soxr-Resampler + Dither!
@@ -119,13 +107,30 @@ def convert_to_flac(src, dst_flac, mp3_mode=False):
                    stderr=subprocess.DEVNULL, check=True)
 
 
+def original_format_for_tag(orig_filepath):
+    # orig_filepath ist ein string oder Path
+    return Path(orig_filepath).suffix.lower().lstrip('.') if orig_filepath else ''
+
+
+def set_flac_tags(flac_path, sha256, orig_file):
+    audio = FLAC(flac_path)
+    audio["GEN0-SHA256"] = sha256
+    orig_ext = original_format_for_tag(orig_file)
+    audio["GEN0-FORMAT"] = orig_ext
+    audio.save()
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Findet Audiodateien, gibt Pfad und 24/96 SHA256 aus. "
-                    "Optional zeigt --filenames_from HASHFILE zugehörige Original-Files an."
+        description="Findet Audiodateien, kopiert oder konvertiert sie nach FLAC, "
+                    "berechnet einen 24/96 PCM SHA256-Hash, "
+                    "und taggt GEN0-SHA256 sowie das Ursprungsformat (GEN0-FORMAT). "
+                    "Optional kann mit --filenames_from HASHFILE für bereits bekannte Hashes "
+                    "der Original-Dateiname angezeigt werden (für Rückwärtskompatibilität)."
     )
     parser.add_argument('--filenames_from', metavar='HASHFILE', type=str,
-                        help='Wenn gesetzt: gibt zu passenden Hashes den Original-Filenamen aus')
+                        help='Wenn gesetzt: zeigt zu passenden Hashes den Original-Dateinamen an (legacy). '
+                             'Die FLACs enthalten immer das Ursprungsformat im Tag GEN0-FORMAT.')
     args = parser.parse_args()
 
     hash_lookup = {}
@@ -144,7 +149,8 @@ def main():
             print(f"  GEN0-SHA256: {sha256}")
             if hash_lookup and sha256 in hash_lookup:
                 orig_filepath = hash_lookup[sha256]
-                print(f"  GEN0-FILE:  {hash_lookup[sha256]}")
+                print(
+                    f"  [Hashfile: Ursprungs-Dateiname: {hash_lookup[sha256]}]")
 
             # Zielpfad (Dateiname bleibt, immer .flac)
             target = stage_dir / (filepath.stem + ".flac")
