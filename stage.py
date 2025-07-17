@@ -7,8 +7,16 @@ import shutil
 from datetime import datetime
 from mutagen.flac import FLAC
 import getpass
+import yaml
 
-AUDIO_EXTENSIONS = {'.wav', '.aiff', '.aifc', '.mp3', '.flac'}
+SCRIPT_DIR = Path(__file__).resolve().parent
+CONFIG_FILE = SCRIPT_DIR / "djs-config.yaml"
+with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+    cfg = yaml.safe_load(f)
+AUDIO_EXTENSIONS = cfg["audio_extensions"]
+ARCHIV_ROOT = os.path.expanduser(cfg["archiv_root"])
+STAGE_ROOT = os.path.expanduser(cfg["stage_root"])
+ENGINE_BASE = os.path.expanduser(cfg["engine_base"])
 
 
 def is_audio_file(filename):
@@ -82,7 +90,9 @@ def ensure_flac_comment_tag(file):
 def set_flac_tags(flac_path, sha256, orig_file):
     audio = FLAC(flac_path)
     audio["GEN0-SHA256"] = sha256
-    audio["GEN0-FILE"] = orig_file
+    # Bestimme das Original-Format (Dateiendung ohne Punkt, klein)
+    orig_ext = Path(orig_file).suffix.lower().lstrip('.')
+    audio["GEN0-TYPE"] = orig_ext
     audio.save()
 
 
