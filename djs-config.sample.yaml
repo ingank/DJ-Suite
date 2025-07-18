@@ -5,6 +5,4 @@ audio_extensions:
   - .mp3
   - .flac
 
-archiv_root: "~/Music/ARCHIV"
-stage_root: "~/Music/STAGE"
-engine_base: "~/Music/Engine Base"
+library_root: "~/Music/Library"
