@@ -1,8 +1,12 @@
+library_root: "~/Music/Library"
+archiv_root: "01 ARCHIV"
+stage_root: "02 STAGE"
+workspace_root: "03 WORKSPACE"
+bag_root: "04 BAG"
+
 audio_extensions:
   - .wav
   - .aiff
   - .aifc
   - .mp3
   - .flac
-
-library_root: "~/Music/Library"
