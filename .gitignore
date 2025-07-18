@@ -1,3 +1,7 @@
-# Konfigurationsdatei ignorieren:
+# Projektbezogen
 djs-config.yaml
 _snippets.txt
+
+# Pycache
+__pycache__/
+*.pyc
