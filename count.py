@@ -1,50 +1,70 @@
 """
 count.py
 
-Zählt alle Audiodateien im aktuellen Ordner und in allen Unterordnern
-und gibt zusätzliche Statistik aus.
+Zählt alle gängigen Audiodateien im aktuellen Ordner und in allen Unterordnern
+und gibt zusätzliche Statistik aus (auch Dubletten).
 """
 
-import os
 from pathlib import Path
 from collections import Counter, defaultdict
+from lib.utils import find_audio_files
 
-AUDIO_EXTENSIONS = ['.wav', '.aiff', '.mp3', '.flac', '.aifc']
+# Erweiterte Liste ALLER üblichen Audioformate (wird immer benutzt)
+EXTENDED_EXTENSIONS = [
+    '.wav', '.aiff', '.aifc', '.mp3', '.flac',
+    '.aac', '.alac', '.ogg', '.opus', '.wma', '.wv', '.ape',
+    '.m4a', '.mp4', '.mov', '.amr', '.ac3', '.dts', '.mka',
+    '.spx', '.ra', '.au', '.snd', '.caf', '.tta', '.gsm'
+]
+
 IN_DIR = Path('.').resolve()
 
 
-def collect_audio_stats(root):
+def collect_audio_stats(root, extensions):
     total = 0
     per_ext = Counter()
     per_folder = defaultdict(int)
     subfolders = set()
+    name_map = defaultdict(list)
 
-    for dirpath, _, filenames in os.walk(root):
-        rel_dir = os.path.relpath(dirpath, root)
-        if rel_dir != ".":
-            subfolders.add(rel_dir)
-        for name in filenames:
-            ext = Path(name).suffix.lower()
-            if ext in AUDIO_EXTENSIONS:
-                total += 1
-                per_ext[ext] += 1
-                per_folder[rel_dir] += 1
-
-    return total, per_ext, per_folder, subfolders
+    for rel_path in find_audio_files(root):
+        if rel_path.suffix.lower() not in extensions:
+            continue
+        total += 1
+        ext = rel_path.suffix.lower()
+        per_ext[ext] += 1
+        folder = str(rel_path.parent)
+        if folder and folder != ".":
+            subfolders.add(folder)
+        per_folder[folder] += 1
+        name_ohne_ext = rel_path.stem
+        name_map[name_ohne_ext].append(rel_path.as_posix())
+    return total, per_ext, per_folder, subfolders, name_map
 
 
 def main():
-    total, per_ext, per_folder, subfolders = collect_audio_stats(IN_DIR)
+    total, per_ext, per_folder, subfolders, name_map = collect_audio_stats(
+        IN_DIR, EXTENDED_EXTENSIONS)
     print(f"\nGefundene Audiodateien: {total}")
-    print("Davon pro Dateityp:")
+    print("\nDavon pro Dateityp:")
     for ext, count in per_ext.items():
         print(f"  {ext}: {count}")
-    print(f"Unterschiedliche Unterordner (außer Root): {len(subfolders)}")
-    # Optional ausführliche Ausgabe pro Ordner:
-    # print("Dateien pro Unterordner:")
+    print(f"\nUnterschiedliche Unterordner (außer Root): {len(subfolders)}")
     for folder, count in per_folder.items():
         print(f"  {folder}: {count}")
 
+    print("\nNamens-Dubletten (gleicher Name, unterschiedliche Endung oder Ordner):")
+    found = False
+    for name, paths in name_map.items():
+        if len(paths) > 1:
+            found = True
+            print(f'  "{name}" in:')
+            for p in paths:
+                print(f"    {p}")
+    if not found:
+        print("  Keine Dubletten gefunden.")
+
+    print()
 
 if __name__ == "__main__":
     main()
