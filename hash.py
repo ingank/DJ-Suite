@@ -14,7 +14,7 @@ Sicherer Workflow für sensible oder wertvolle Audiodaten.
 """
 
 from pathlib import Path
-from lib.sha256 import sha256
+from lib.soundfile import sha256
 from lib.utils import find_audio_files, get_timestamp
 
 
