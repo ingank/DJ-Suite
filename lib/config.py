@@ -31,4 +31,5 @@ TEMP_ROOT = os.path.join(LIBRARY_ROOT, cfg.get("temp_root", "99 TEMP"))
 LOG_ROOT = os.path.join(LIBRARY_ROOT, cfg.get("log_root", "98 LOG"))
 DB_NAME = cfg.get("database_name", "DB")
 LOG_LEVEL = cfg.get("log_level", "INFO")
+BAG_LUFS = float(cfg.get("bag_lufs", -21.0))
 AUDIO_EXTENSIONS = cfg["audio_extensions"]
