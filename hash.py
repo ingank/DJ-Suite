@@ -1,56 +1,47 @@
-import os
-import hashlib
-import subprocess
+"""
+hash.py
+
+Erzeugt für alle Audiodateien im aktuellen Verzeichnis (rekursiv) eine
+SHA256-Hashliste. Das Skript bricht beim ersten Fehler sofort ab und meldet,
+wie viele Dateien bis dahin erfolgreich verarbeitet wurden. Bei fehlerfreiem
+Durchlauf wird die Gesamtanzahl bestätigt.
+
+Audio-Formate und Pipeline sind über lib.config/lib.sha256 zentral definiert.
+
+Ergebnis: sha256-hashes-YYYY-mm-dd_HH-MM-SS.txt im aktuellen Verzeichnis.
+
+Sicherer Workflow für sensible oder wertvolle Audiodaten.
+"""
+
 from pathlib import Path
-from datetime import datetime
-
-AUDIO_EXTENSIONS = ['.wav', '.aiff', '.aifc', '.mp3', '.flac']
-ARCHIV_ROOT = Path('.').resolve()
-
-
-def pcm_sha256_pipe(file):
-    ffmpeg_cmd = [
-        'ffmpeg', '-y', '-i', str(file),
-        '-map', '0:a:0',
-        '-vn', '-acodec', 'pcm_s24le', '-ar', '96000', '-ac', '2',
-        '-f', 's24le', '-'
-    ]
-    proc = subprocess.Popen(
-        ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    hasher = hashlib.sha256()
-    while True:
-        chunk = proc.stdout.read(1024 * 1024)
-        if not chunk:
-            break
-        hasher.update(chunk)
-    proc.wait()
-    return hasher.hexdigest()
-
-
-def find_audio_files(root):
-    for dirpath, _, filenames in os.walk(root):
-        for name in filenames:
-            if Path(name).suffix.lower() in AUDIO_EXTENSIONS:
-                yield Path(dirpath) / name
+from lib.sha256 import sha256
+from lib.utils import find_audio_files, get_timestamp
 
 
 def main():
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    timestamp = get_timestamp()
     outfilename = f"sha256-hashes-{timestamp}.txt"
-    with open(outfilename, 'w', encoding='utf-8') as out:
-        for file in find_audio_files(ARCHIV_ROOT):
-            try:
-                sha256 = pcm_sha256_pipe(file)
-                relpath = file.relative_to(ARCHIV_ROOT)
-                # Bildschirm-Ausgabe:
-                print(sha256)
+    root = Path('.').resolve()
+
+    processed = 0
+
+    try:
+        with open(outfilename, 'w', encoding='utf-8') as out:
+            for relpath in find_audio_files(root):
+                hashval = sha256(root / relpath)
+                print(hashval)
                 print(relpath.parent.as_posix())
                 print(relpath.name)
                 print()
-                # Dateiausgabe:
-                out.write(f"{sha256} {relpath.as_posix()}\n")
-            except Exception as e:
-                print(f"Fehler bei {file}: {e}")
+                out.write(f"{hashval} {relpath.as_posix()}\n")
+                processed += 1
+    except Exception as e:
+        print(f"\n[ABBRUCH] Fehler bei {relpath}: {e}")
+        print(f"Bis zum Fehler wurden {processed} Dateien verarbeitet.")
+        raise  # Optional: für Stacktrace
+
+    print(
+        f"\nAlle {processed} Dateien wurden erfolgreich verarbeitet – KEIN Fehler aufgetreten!")
 
 
 if __name__ == "__main__":
