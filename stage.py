@@ -16,8 +16,7 @@ from pathlib import Path
 import argparse
 from lib.config import STAGE_ROOT, LOG_ROOT
 from lib.utils import get_timestamp, find_audio_files
-from lib.sha256 import sha256
-from lib.transcode import to_flac
+from lib.soundfile import sha256, to_stage
 from lib.tagging import touch_comment, set_tags
 import sys
 
@@ -109,7 +108,7 @@ def main():
                         f"[HASH NICHT IN HASHFILE] {sha} (verwende lokale Endung: {gen0_format})")
 
             # Transcodieren oder kopieren
-            to_flac(str(src_file), str(out_file), flac_copy=True)
+            to_stage(str(src_file), str(out_file), flac_copy=True)
 
             # Kommentar-Tag korrigieren (falls nötig)
             touch_comment(str(out_file))
