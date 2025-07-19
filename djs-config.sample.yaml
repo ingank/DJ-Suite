@@ -8,6 +8,7 @@ temp_root: "99 TEMP"
 database_name: ".DB"
 
 log_level: "INFO"
+bag_lufs: -21.0
 
 audio_extensions:
   - .wav
