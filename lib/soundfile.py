@@ -82,10 +82,10 @@ def to_stage(src, dst_flac, flac_copy=True):
     if ext == ".flac":
         if flac_copy:
             shutil.copy2(src, dst_flac)
-            print(f"[OK] FLAC kopiert: {src} → {dst_flac}")
+            #print(f"[OK] FLAC kopiert: {src} → {dst_flac}")
             return
         else:
-            print(f"[INFO] FLAC wird neu codiert: {src} → {dst_flac}")
+            #print(f"[INFO] FLAC wird neu codiert: {src} → {dst_flac}")
             mp3_mode = False
     elif ext == ".mp3":
         mp3_mode = True
@@ -109,9 +109,9 @@ def to_stage(src, dst_flac, flac_copy=True):
     try:
         subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, check=True)
-        print(f"[OK] Konvertiert: {src} → {dst_flac}")
+        #print(f"[OK] Konvertiert: {src} → {dst_flac}")
     except subprocess.CalledProcessError as e:
-        print(f"[FEHLER] Fehler bei der Konvertierung: {src} → {dst_flac}")
+        #print(f"[FEHLER] Fehler bei der Konvertierung: {src} → {dst_flac}")
         raise e
 
 
@@ -131,7 +131,7 @@ def to_bag(src_flac, dst_dir, overwrite=False):
 
     # 2. Existenz prüfen
     if os.path.exists(dst_path) and not overwrite:
-        print(f"[SKIP] Ziel existiert bereits: {dst_path}")
+        #print(f"[SKIP] Ziel existiert bereits: {dst_path}")
         return dst_path
 
     # 3. Transkodierung
@@ -147,9 +147,9 @@ def to_bag(src_flac, dst_dir, overwrite=False):
     try:
         subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, check=True)
-        print(f"[OK] {src_flac} → {dst_path}")
+        #print(f"[OK] {src_flac} → {dst_path}")
     except subprocess.CalledProcessError as e:
-        print(f"[FEHLER] Fehler bei Transcodierung: {src_flac} → {dst_path}")
+        #print(f"[FEHLER] Fehler bei Transcodierung: {src_flac} → {dst_path}")
         raise e
 
     return dst_path
