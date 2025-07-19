@@ -31,7 +31,7 @@ def touch_comment(flac_path):
         flac_file["COMMENT"] = flac_file["description"]
         del flac_file["description"]
         flac_file.save()
-        print(f"[OK] Kommentar-Tag korrigiert in: {flac_path}")
+        #print(f"[OK] Kommentar-Tag korrigiert in: {flac_path}")
 
 
 def set_tags(flac_path, tags, overwrite=True):
