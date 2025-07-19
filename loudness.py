@@ -1,17 +1,17 @@
 """
 loudness.py
 
-Misst die Lautheit (LUFS) aller Audio-Dateien rekursiv im aktuellen Verzeichnis und allen Unterordnern.
-Für FLAC-Dateien wird ein LUFS-Tag automatisch ergänzt, falls noch nicht vorhanden (auf 1 Nachkommastelle).
+Misst die Lautheit (LUFS) aller Audiodateien rekursiv im aktuellen Verzeichnis und allen Unterordnern.
+Für FLAC-Dateien wird ein LUFS-Tag automatisch ergänzt, falls noch nicht vorhanden (auf eine Nachkommastelle).
 Gibt die Ergebnisse tabellarisch mit Status (R/W) aus.
 
-Nutzt lib.soundfile für die Analyse und lib.tagging für Tagging-Operationen.
+Abhängigkeiten: lib.soundfile, lib.tagging, lib.utils
 """
 
 from pathlib import Path
 from lib.utils import find_audio_files
 from lib.soundfile import loudness
-from lib.tagging import get_tag, set_tags
+from lib.tagging import get_tags, set_tags
 
 
 def main():
@@ -27,9 +27,13 @@ def main():
         try:
             mode = "R"
             lufs = None
-            lufs_tag = None
+
+            # Für FLAC: erst versuchen Tag zu lesen
             if file.suffix.lower() == ".flac":
-                lufs_tag = get_tag(file, "LUFS")
+                lufs_tag = get_tags(file, "lufs")
+            else:
+                lufs_tag = None
+
             if lufs_tag is not None:
                 try:
                     lufs = float(lufs_tag)
@@ -38,7 +42,7 @@ def main():
             if lufs is None:
                 lufs, _ = loudness(file)
                 if file.suffix.lower() == ".flac" and lufs is not None:
-                    set_tags(file, LUFS=f"{lufs:.1f}")
+                    set_tags(file, {"lufs": f"{lufs:.1f}"})
                     mode = "W"
             lufs_str = f"{lufs:8.2f}" if lufs is not None else "   n/a  "
             print(f"{mode:>3}  {lufs_str}  {rel_path}")
