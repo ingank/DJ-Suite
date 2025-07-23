@@ -1,6 +1,7 @@
 # lib/hash.py
 
 from typing import Iterator, Tuple, Optional
+from pathlib import Path
 
 
 def read(filepath: str) -> Iterator[Tuple[str, str]]:
@@ -34,7 +35,12 @@ def write(filepath: str, items: Iterator[Tuple[str, str]]) -> None:
     - Bricht mit Exception ab, wenn die Datei bereits existiert (kein Überschreiben).
     - Eine Zeile pro Paar: <hash> <path>.
     """
-    pass
+    pfad = Path(filepath)
+    if pfad.exists():
+        raise FileExistsError(f"Datei existiert bereits: {filepath}")
+    with pfad.open("w", encoding="utf-8") as f:
+        for hashval, relpath in items:
+            f.write(f"{hashval} {relpath}\n")
 
 
 def scan(directory: str, depth: Optional[int] = None) -> Iterator[Tuple[str, str]]:
