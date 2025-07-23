@@ -2,6 +2,8 @@
 
 from typing import Iterator, Tuple, Optional
 from pathlib import Path
+from lib.soundfile import sha256
+from lib.utils import find_audio_files
 
 
 def read(filepath: str) -> Iterator[Tuple[str, str]]:
@@ -48,7 +50,11 @@ def scan(directory: str, depth: Optional[int] = None) -> Iterator[Tuple[str, str
     Findet alle unterstützten Audiodateien im Verzeichnis (rekursiv, optional bis zu gegebener Tiefe),
     berechnet SHA256-Hashes und gibt (hash, relpath) für jede Datei zurück.
     """
-    pass
+    root = Path(directory).resolve()
+    # Achtung: find_audio_files gibt RELATIVE Pfade, wenn absolute=False
+    for relpath in find_audio_files(root, absolute=False, depth=depth):
+        hashval = sha256(root / relpath)
+        yield hashval, relpath.as_posix()
 
 
 def compare(
