@@ -1,6 +1,7 @@
 # lib/hash.py
 
-from typing import Iterator, Tuple, Optional
+from typing import Iterator, Tuple, Optional, Dict, List
+from itertools import product
 from pathlib import Path
 from lib.soundfile import sha256
 from lib.utils import find_audio_files
@@ -68,4 +69,27 @@ def compare(
       - Nur in 2: (hash, None, path2)
       - In beiden: alle Kombinationen (bei Duplikaten)
     """
-    pass
+    # Zuerst: Alles in Dictionaries sammeln (hash -> Liste[pfad])
+    hashes1: Dict[str, List[str]] = {}
+    hashes2: Dict[str, List[str]] = {}
+    for h, p in source1:
+        hashes1.setdefault(h, []).append(p)
+    for h, p in source2:
+        hashes2.setdefault(h, []).append(p)
+    # Alle Hashes (Vereinigungsmenge)
+    all_hashes = set(hashes1) | set(hashes2)
+    for h in all_hashes:
+        lefts = hashes1.get(h, [])
+        rights = hashes2.get(h, [])
+        if lefts and rights:
+            # Kreuzprodukt: alle Kombinationen von Pfaden
+            for l, r in product(lefts, rights):
+                yield h, l, r
+        elif lefts:
+            # Hash nur in 1
+            for l in lefts:
+                yield h, l, None
+        else:
+            # Hash nur in 2
+            for r in rights:
+                yield h, None, r
