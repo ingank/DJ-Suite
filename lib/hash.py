@@ -2,6 +2,7 @@
 
 from typing import Iterator, Tuple, Optional
 
+
 def read(filepath: str) -> Iterator[Tuple[str, str]]:
     """
     Liest eine Hashdatei im Format <hash> <path>.
@@ -9,7 +10,22 @@ def read(filepath: str) -> Iterator[Tuple[str, str]]:
     - Fehlerhafte Zeilen oder leere Zeilen (außer am Dateiende) führen zum Abbruch (Exception).
     - Gibt (hash, path) pro Zeile zurück.
     """
-    pass
+    with open(filepath, encoding="utf-8") as f:
+        lines = f.readlines()
+    n = len(lines)
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            # Nur die letzte Zeile darf leer sein!
+            if i == n - 1:
+                continue
+            raise ValueError(
+                f"Leere Zeile {i+1} (nicht am Dateiende) in {filepath!r}")
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            raise ValueError(
+                f"Fehlerhafte Zeile {i+1} in {filepath!r}: {line!r}")
+        yield parts[0], parts[1]
 
 
 def write(filepath: str, items: Iterator[Tuple[str, str]]) -> None:
@@ -30,7 +46,7 @@ def scan(directory: str, depth: Optional[int] = None) -> Iterator[Tuple[str, str
 
 
 def compare(
-    source1: Iterator[Tuple[str, str]], 
+    source1: Iterator[Tuple[str, str]],
     source2: Iterator[Tuple[str, str]]
 ) -> Iterator[Tuple[str, Optional[str], Optional[str]]]:
     """
