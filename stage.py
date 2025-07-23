@@ -36,6 +36,8 @@ def main():
         return
 
     ok, err = 0, 0
+    error_files = []  # Liste für Fehlerdateien
+
     for relpath in files:
         file = Path('.') / relpath
         dst_flac = stage_dir / relpath.with_suffix(".flac")
@@ -60,9 +62,14 @@ def main():
             print(f"[FEHLER] bei {file}: {e}")
             print(f"\n\n\n")
             err += 1
+            error_files.append(str(file))  # Fehlerdatei merken
         print()
 
     print(f"\n[INFO] {ok} Dateien verarbeitet, {err} Fehler.")
+    if error_files:
+        print("[FEHLERLISTE]")
+        for f in error_files:
+            print(f"- {f}")
     print("[ENDE] Stage-Prozess abgeschlossen.")
 
 
