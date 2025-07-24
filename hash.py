@@ -1,8 +1,36 @@
-# hash.py (main)
+"""
+hash.py
+
+Multifunctional CLI tool for managing audio file hashes.
+
+Subcommands:
+  - scan:      Recursively hash all audio files in a directory and output a hash list.
+  - intersect: Find common hashes (intersection) between two hash files, 
+               with flexible source selection for paths and optional duplicate reporting.
+  - diff:      Find all lines from one hash file that are not present in another,
+               with support for both directions, per-direction output, and optional duplicate reporting.
+
+Features:
+  - Simple, line-based hash file format: <hash> <relative/path/to/file>
+  - Flexible output and filtering for intersections and differences
+  - Handles duplicate hashes (multiple files with same content)
+  - Optional statistics and detailed reports
+  - Pure Python, only standard library (argparse, pathlib, etc.)
+  - Robust error handling and clear console output
+
+Usage examples:
+  python hash.py scan [DIRECTORY] [--depth N]
+  python hash.py intersect file1.txt file2.txt [--paths-from {file1,file2}] [--save-dupes]
+  python hash.py diff file1.txt file2.txt [--from {file1,file2}] [--save-dupes]
+
+Hash file format:
+  Each line: <sha256-hash> <relative/path/to/file>
+  Example:   1a2b3c4d...  music/album/track.mp3
+
+(c) 2024-2025, Your Name or Organization
+"""
 
 import argparse
-from datetime import datetime
-from pathlib import Path
 from lib.hash import scan, match, write, read, dupes, diff
 from lib.utils import make_filename
 
