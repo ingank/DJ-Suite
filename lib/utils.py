@@ -1,5 +1,6 @@
 # lib/utils.py
 
+from typing import Optional
 from pathlib import Path
 import os
 from datetime import datetime
@@ -12,6 +13,28 @@ def get_timestamp():
     Beispiel: 2024-07-17_19-35-01
     """
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def make_filename(
+    prefix: str,
+    ext: str = "txt",
+    suffix: Optional[str] = None,
+    dir: Optional[str] = None,
+    timestamp_format: str = "%Y%m%d-%H%M%S"
+) -> Path:
+    """
+    Erstellt einen Dateinamen wie <prefix>-<timestamp>[-<suffix>].<ext>
+    Optional im Verzeichnis dir.
+    Beispiel: make_filename("hash-match") -> Path('hash-match-20240723-213350.txt')
+    """
+    ts = datetime.now().strftime(timestamp_format)
+    name = f"{prefix}-{ts}"
+    if suffix:
+        name += f"-{suffix}"
+    name += f".{ext.lstrip('.')}"
+    if dir:
+        return Path(dir) / name
+    return Path(name)
 
 
 def find_audio_files(root, absolute=False, depth=None):

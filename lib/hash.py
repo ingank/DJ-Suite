@@ -1,7 +1,8 @@
 # lib/hash.py
 
-from typing import Iterator, Tuple, Optional, Dict, List
+from typing import Iterator, Tuple, Optional, Dict, List, Set
 from itertools import product
+from collections import defaultdict
 from pathlib import Path
 from lib.soundfile import sha256
 from lib.utils import find_audio_files
@@ -32,18 +33,21 @@ def read(filepath: str) -> Iterator[Tuple[str, str]]:
         yield parts[0], parts[1]
 
 
-def write(filepath: str, items: Iterator[Tuple[str, str]]) -> None:
+def write(filepath: str, items: Iterator[Tuple[str, str]]) -> Iterator[str]:
     """
     Schreibt eine Folge von (hash, path)-Tupeln in die Datei filepath.
     - Bricht mit Exception ab, wenn die Datei bereits existiert (kein Überschreiben).
     - Eine Zeile pro Paar: <hash> <path>.
+    - Gibt jede Zeile beim Schreiben als String zurück (Generator).
     """
     pfad = Path(filepath)
     if pfad.exists():
         raise FileExistsError(f"Datei existiert bereits: {filepath}")
     with pfad.open("w", encoding="utf-8") as f:
         for hashval, relpath in items:
-            f.write(f"{hashval} {relpath}\n")
+            line = f"{hashval} {relpath}"
+            f.write(line + "\n")
+            yield line  # Generator: Zeile auch zurückgeben
 
 
 def scan(directory: str, depth: Optional[int] = None) -> Iterator[Tuple[str, str]]:
@@ -56,6 +60,47 @@ def scan(directory: str, depth: Optional[int] = None) -> Iterator[Tuple[str, str
     for relpath in find_audio_files(root, absolute=False, depth=depth):
         hashval = sha256(root / relpath)
         yield hashval, relpath.as_posix()
+
+
+def dupes(items: Iterator[Tuple[str, str]]) -> Dict[str, List[str]]:
+    """
+    Liefert ein Dict aller Hashes, die mehrfach vorkommen,
+    zusammen mit allen zugehörigen Pfaden:
+      {hash: [pfad1, pfad2, ...], ...}
+    Nur Hashes mit mehr als einem Pfad werden geliefert!
+    """
+    hash_to_paths = defaultdict(list)
+    for hashval, path in items:
+        hash_to_paths[hashval].append(path)
+    return {h: ps for h, ps in hash_to_paths.items() if len(ps) > 1}
+
+
+def match(
+    source1: Iterator[Tuple[str, str]],
+    source2: Iterator[Tuple[str, str]]
+) -> Iterator[Tuple[str, str]]:
+    """
+    Gibt alle (hash, path) aus source1 zurück, deren hash auch in source2 vorkommt.
+    Reihenfolge bleibt wie in source1. In-File-Dubletten werden geliefert.
+    """
+    hashes2: Set[str] = set(hashval for hashval, _ in source2)
+    for hashval, path1 in source1:
+        if hashval in hashes2:
+            yield hashval, path1
+
+
+def diff(
+    source1: Iterator[Tuple[str, str]],
+    source2: Iterator[Tuple[str, str]]
+) -> Iterator[Tuple[str, str]]:
+    """
+    Gibt alle (hash, path) aus source1 zurück, deren Hash NICHT in source2 vorkommt.
+    Reihenfolge bleibt wie in source1. In-File-Dubletten werden geliefert.
+    """
+    hashes2: Set[str] = set(hashval for hashval, _ in source2)
+    for hashval, path1 in source1:
+        if hashval not in hashes2:
+            yield hashval, path1
 
 
 def compare(
