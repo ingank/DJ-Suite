@@ -61,6 +61,16 @@ def main():
     match_parser.add_argument("hashfile1", help="Erste Hashdatei")
     match_parser.add_argument("hashfile2", help="Zweite Hashdatei")
 
+    # DUPES
+    dupes_parser = subparsers.add_parser(
+        "dupes", help="Listet alle Hash-Dubletten aus einer Hashdatei")
+    dupes_parser.add_argument("hashfile", help="Hashdatei zur Duplikatsuche")
+    dupes_parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Dubletten in Originalreihenfolge (nicht sortiert) ausgeben"
+    )
+
     args = parser.parse_args()
 
     if args.command == "scan":
@@ -110,6 +120,27 @@ def main():
                 print()
         else:
             print("\nKeine Duplikate aus Datei 1 gefunden.")
+
+    elif args.command == "dupes":
+        all_lines = list(read(args.hashfile))
+        dupes_dict = dupes(all_lines)
+
+        # Zeilen für Ausgabe generieren (immer alle Dubletten-Zeilen, aber Reihenfolge je nach Option)
+        if args.raw:
+            # Reihenfolge wie im Originalfile (raw)
+            dupes_lines = ((hashval, path)
+                           for hashval, path in all_lines if hashval in dupes_dict)
+        else:
+            # Alphabetisch nach Hash und dann Pfad
+            dupes_lines = sorted(
+                ((hashval, path) for hashval, paths in dupes_dict.items()
+                 for path in paths),
+                key=lambda t: (t[0], t[1])
+            )
+
+        outfile = make_filename("hash-dupes")
+        for line in write(outfile, dupes_lines):
+            print(line)
 
 
 if __name__ == "__main__":
