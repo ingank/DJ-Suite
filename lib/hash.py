@@ -103,6 +103,20 @@ def diff(
             yield hashval, path1
 
 
+def sort_by_path(items: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    """
+    Gibt eine neue Liste zurück, sortiert nur nach Pfad (aufsteigend).
+    """
+    return sorted(items, key=lambda t: t[1].lower())
+
+
+def sort_by_hash_path(items: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    """
+    Gibt eine neue Liste zurück, sortiert erst nach Hash, dann nach Pfad (beides aufsteigend).
+    """
+    return sorted(items, key=lambda t: (t[0], t[1]))
+
+
 def compare(
     source1: Iterator[Tuple[str, str]],
     source2: Iterator[Tuple[str, str]]
