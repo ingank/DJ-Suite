@@ -31,7 +31,7 @@ Hash file format:
 """
 
 import argparse
-from lib.hash import scan, match, write, read, dupes, diff
+from lib.hash import scan, match, write, read, dupes, diff, sort_by_path, sort_by_hash_path
 from lib.utils import make_filename
 
 
@@ -71,6 +71,19 @@ def main():
         help="Dubletten in Originalreihenfolge (nicht sortiert) ausgeben"
     )
 
+    # SORT
+    sort_parser = subparsers.add_parser(
+        "sort", help="Sortiert eine Hashdatei nach Pfad")
+    sort_parser.add_argument(
+        "hashfile", help="Hashdatei, die sortiert werden soll")
+
+    # MERGE
+    merge_parser = subparsers.add_parser(
+        "merge", help="Vereint zwei Hashdateien zu einer neuen Datei (ohne Dubletten)."
+    )
+    merge_parser.add_argument("hashfile1", help="Erste Hashdatei")
+    merge_parser.add_argument("hashfile2", help="Zweite Hashdatei")
+
     args = parser.parse_args()
 
     if args.command == "scan":
@@ -81,65 +94,62 @@ def main():
             print(line)
 
     elif args.command == "diff":
-
-        # Generator erzeugen und als Liste materialisieren (für Mehrfachnutzung):
+        """
+        Gibt alle (hash, path) aus source1 zurück, deren Hash NICHT in source2 vorkommt.
+        Reihenfolge bleibt wie in source1. In-File-Dubletten werden geliefert.
+        """
         diffs = list(diff(read(args.hashfile1), read(args.hashfile2)))
         outfile = make_filename("hash-diff")
         for line in write(outfile, iter(diffs)):
             print(line)
 
-        # Duplikate unter den „left-only“-Ergebnissen anzeigen
-        dupes_dict = dupes(diffs)
-        if dupes_dict:
-            print("\nDuplikate aus Datei 1 (Hash mehrmals):\n")
-            for hashval in sorted(dupes_dict):
-                print(hashval)
-                for p in sorted(dupes_dict[hashval]):
-                    print(p)
-                print()
-        else:
-            print("\nKeine Duplikate aus Datei 1 gefunden.")
-
     elif args.command == "match":
-        # 1. Alle Treffer aus Datei 1, deren Hash auch in Datei 2 vorkommt (Originalreihenfolge)
+        """
+        Gibt alle (hash, path) aus source1 zurück, deren hash auch in source2 vorkommt.
+        Reihenfolge bleibt wie in source1. In-File-Dubletten werden geliefert.
+        """
         matches = list(match(read(args.hashfile1), read(args.hashfile2)))
-
-        # 2. Schreibe die Hash-Matches ins File und gib gleichzeitig alles aus
         outfile = make_filename("hash-match")
         for line in write(outfile, iter(matches)):
             print(line)
-
-        # 3. Duplikate aus matches anzeigen (Hash mehrfach in Datei 1)
-        dupes_dict = dupes(matches)
-        if dupes_dict:
-            print("\nDuplikate aus Datei 1 (Hash mehrmals):\n")
-            for hashval in sorted(dupes_dict):
-                print(hashval)
-                for p in sorted(dupes_dict[hashval]):
-                    print(p)
-                print()
-        else:
-            print("\nKeine Duplikate aus Datei 1 gefunden.")
 
     elif args.command == "dupes":
         all_lines = list(read(args.hashfile))
         dupes_dict = dupes(all_lines)
 
-        # Zeilen für Ausgabe generieren (immer alle Dubletten-Zeilen, aber Reihenfolge je nach Option)
         if args.raw:
             # Reihenfolge wie im Originalfile (raw)
-            dupes_lines = ((hashval, path)
-                           for hashval, path in all_lines if hashval in dupes_dict)
+            dupes_lines = [(hashval, path)
+                           for hashval, path
+                           in all_lines
+                           if hashval in dupes_dict]
         else:
             # Alphabetisch nach Hash und dann Pfad
-            dupes_lines = sorted(
-                ((hashval, path) for hashval, paths in dupes_dict.items()
-                 for path in paths),
-                key=lambda t: (t[0], t[1])
+            dupes_lines = sort_by_hash_path(
+                [(hashval, path)
+                 for hashval, path
+                 in all_lines
+                 if hashval in dupes_dict]
             )
 
         outfile = make_filename("hash-dupes")
         for line in write(outfile, dupes_lines):
+            print(line)
+
+    elif args.command == "sort":
+        lines = list(read(args.hashfile))
+        sorted_lines = sort_by_path(lines)
+        outfile = make_filename("hash-sorted")
+        for line in write(outfile, sorted_lines):
+            print(line)
+
+    elif args.command == "merge":
+        lines1 = list(read(args.hashfile1))
+        lines2 = list(read(args.hashfile2))
+        merged_set = set(lines1) | set(lines2)
+        merged_list = sort_by_path(merged_set)
+        outfile = make_filename("hash-merge")
+        for line in write(outfile, merged_list):
             print(line)
 
 
