@@ -30,9 +30,12 @@ Hash file format:
 (c) 2024-2025, Your Name or Organization
 """
 
+import shutil
 import argparse
+from pathlib import Path
 from lib.hash import scan, match, write, read, dupes, diff, sort_by_path, sort_by_hash_path
 from lib.utils import make_filename
+from lib.config import STAGE_ROOT
 
 
 def main():
@@ -83,6 +86,22 @@ def main():
     )
     merge_parser.add_argument("hashfile1", help="Erste Hashdatei")
     merge_parser.add_argument("hashfile2", help="Zweite Hashdatei")
+
+    # COPY
+    copy_parser = subparsers.add_parser(
+        "copy", help="Kopiert alle Dateien aus einer Hashdatei in einen neuen Ordner (mit Struktur)")
+    copy_parser.add_argument(
+        "hashfile", help="Hashdatei, aus der kopiert wird")
+
+    # MOVE
+    move_parser = subparsers.add_parser(
+        "move",
+        help="Verschiebt alle in einer Hashdatei gelisteten Dateien in einen neuen Ordner (mit Struktur)"
+    )
+    move_parser.add_argument(
+        "hashfile",
+        help="Hashdatei, deren Dateien verschoben werden sollen"
+    )
 
     args = parser.parse_args()
 
@@ -150,6 +169,65 @@ def main():
         merged_list = sort_by_path(merged_set)
         outfile = make_filename("hash-merge")
         for line in write(outfile, merged_list):
+            print(line)
+
+    elif args.command == "copy":
+        # Timestamp/Name für Ordner und Datei (synchron)
+        basename = make_filename("copy", ext="").stem
+        outdir = Path(STAGE_ROOT) / basename
+        outfile = outdir / f"{basename}.txt"
+
+        # Hashfile lesen & Existenz prüfen
+        all_lines = list(read(args.hashfile))
+        missing = [p for _, p in all_lines if not Path(p).is_file()]
+        if missing:
+            print("FEHLER: Nicht alle Dateien aus der Hashdatei existieren. Abbruch.")
+            exit(1)
+
+        # Zielordner anlegen
+        outdir.mkdir(parents=True, exist_ok=True)
+
+        # Kopier-Generator
+        def copy_and_yield(lines):
+            for hashval, relpath in lines:
+                src = Path(relpath)
+                dst = outdir / relpath
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+                yield hashval, relpath
+
+        # Ausgeben & Schreiben
+        for line in write(outfile, copy_and_yield(all_lines)):
+            print(line)
+
+    elif args.command == "move":
+        # Timestamp/Name für Ordner und Datei (synchron)
+        basename = make_filename("move", ext="").stem
+        outdir = Path(STAGE_ROOT) / basename
+        outfile = outdir / f"{basename}.txt"
+
+        # Hashfile lesen & Existenz prüfen
+        all_lines = list(read(args.hashfile))
+        missing = [p for _, p in all_lines if not Path(p).is_file()]
+        if missing:
+            print("FEHLER: Nicht alle Dateien aus der Hashdatei existieren. Abbruch.")
+            exit(1)
+
+        # Zielordner anlegen
+        outdir.mkdir(parents=True, exist_ok=True)
+
+        # Verschiebe-Generator
+        def move_and_yield(lines):
+            for hashval, relpath in lines:
+                src = Path(relpath)
+                dst = outdir / relpath
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                # shutil.move akzeptiert nur Strings!
+                shutil.move(str(src), str(dst))
+                yield hashval, relpath
+
+        # Ausgeben & Schreiben
+        for line in write(outfile, move_and_yield(all_lines)):
             print(line)
 
 
