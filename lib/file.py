@@ -153,27 +153,39 @@ def to_bag(src_flac, dst_flac, src_lufs, target_lufs):
 
 def set_tags(flac_path, tags, overwrite=True):
     """
-    Setzt Metadaten-Tags in einer FLAC-Datei.
-    Bestehende Tags können optional erhalten bleiben.
-    Alle Tag-Namen werden in Kleinbuchstaben gespeichert.
+    Setzt beliebige Tags (übergeben als dict) in einer FLAC-Datei.
+    - Alle Keys werden zu Kleinbuchstaben normalisiert (FLAC/Mutagen-Standard).
+    - Wenn overwrite=False, werden vorhandene Tags NICHT überschrieben.
     """
     audio = FLAC(flac_path)
-    for k, v in tags.items():
-        if overwrite or k not in audio:
-            audio[k] = [str(v)]
+    for tag, value in tags.items():
+        tag = tag.lower()
+        if overwrite or tag not in audio:
+            audio[tag] = str(value)
     audio.save()
 
 
 def get_tags(flac_path, tags=None):
     """
-    Liest Metadaten-Tags aus einer FLAC-Datei.
-    Gibt ein Dictionary zurück.
-    Bei Angabe einer Tagliste wird nur diese zurückgegeben.
+    Liest Tags aus einer FLAC-Datei.
+
+    - Ohne tags:        Gibt alle Tags als dict zurück.
+    - Mit String:       Gibt den Wert (oder None) für EIN Tag zurück.
+    - Mit Liste/Tuple:  Gibt dict mit diesen Tags zurück (fehlende: None).
+    Alle Keys werden zu Kleinbuchstaben normalisiert.
     """
     audio = FLAC(flac_path)
+    all_tags = {k.lower(): v for k, v in dict(audio).items()}
+
     if tags is None:
-        return dict(audio)
-    return {k: audio.get(k, [None])[0] for k in tags}
+        return all_tags
+
+    if isinstance(tags, str):
+        # Einzelner Tag
+        return all_tags.get(tags.lower(), [None])[0]
+
+    # Mehrere Tags als Liste/Tuple
+    return {tag: all_tags.get(tag.lower(), [None])[0] for tag in tags}
 
 
 def touch_comment_tag(flac_path):
@@ -186,3 +198,19 @@ def touch_comment_tag(flac_path):
         flac_file["COMMENT"] = flac_file["description"]
         del flac_file["description"]
         flac_file.save()
+
+
+def touch_padding(flac_path, size=8192):
+    """
+    Versucht, einen PADDING-Block der gegebenen Größe (default: 8192 Bytes) hinzuzufügen.
+    Wenn bereits ein PADDING-Block vorhanden ist, tut die Funktion nichts.
+    Ignoriert den Fehler, der durch vorhandenes Padding entsteht.
+    """
+    try:
+        subprocess.run(
+            ['metaflac', f'--add-padding={size}', str(flac_path)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    except subprocess.CalledProcessError:
+        # Fehler beim Hinzufügen – vermutlich weil PADDING schon existiert
+        pass

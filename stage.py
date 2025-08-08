@@ -8,8 +8,7 @@ Abhängigkeiten: lib.transcode, lib.sha256, lib.tagging, lib.config, lib.utils
 
 import os
 from pathlib import Path
-from lib.file import sha256, to_stage
-from lib.tagging import set_tags, touch_comment
+from lib.file import set_tags, touch_comment_tag, sha256, to_stage
 from lib.config import STAGE_ROOT, AUDIO_EXTENSIONS
 from lib.utils import find_audio_files, get_timestamp
 
@@ -48,7 +47,7 @@ def main():
             # SHA256 berechnen
             sha = sha256(file)
             # FLAC-Kommentar ggf. anpassen
-            touch_comment(dst_flac)
+            touch_comment_tag(dst_flac)
             # GEN0-SHA256-Tag setzen
             set_tags(dst_flac, {"GEN0-SHA256": sha})
 

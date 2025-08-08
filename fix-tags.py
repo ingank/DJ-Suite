@@ -5,7 +5,7 @@ import subprocess
 
 from lib.utils import get_timestamp, find_audio_files
 from lib.config import AUDIO_EXTENSIONS
-from lib.tagging import touch_comment
+from lib.file import touch_comment_tag
 
 # Arbeitsverzeichnis (Quellordner)
 SOURCE_ROOT = Path.cwd()
@@ -69,7 +69,7 @@ for rel_path in audio_files:
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # 6. COMMENT fixen
-    touch_comment(dst_path)
+    touch_comment_tag(dst_path)
 
     # 7. Ausgabe
     print(f"remuxed: {rel_path} -> {dst_path.relative_to(TARGET_ROOT)}")

@@ -1,7 +1,7 @@
 import os
 import sys
 from lib.file_selector import choose_file_from_folder
-from lib.tagging import set_tags
+from lib.file import set_tags
 import msvcrt
 import string
 

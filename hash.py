@@ -34,7 +34,7 @@ import shutil
 import argparse
 from pathlib import Path
 from lib.hash import scan, match, write, read, dupes, diff, sort_by_path, sort_by_hash_path
-from lib.tagging import get_tags
+from lib.file import get_tags
 from lib.utils import make_filename, find_audio_files
 from lib.config import STAGE_ROOT
 
@@ -256,7 +256,7 @@ def main():
                 results.append((hashval, relpath.as_posix()))
 
         print()
-        
+
         if missing:
             print(
                 "[ERROR] Die folgenden Dateien haben keinen gültigen GEN0-SHA256-Tag:")

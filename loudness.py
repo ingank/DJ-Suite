@@ -10,8 +10,7 @@ Abhängigkeiten: lib.soundfile, lib.tagging, lib.utils
 
 from pathlib import Path
 from lib.utils import find_audio_files
-from lib.file import loudness
-from lib.tagging import get_tags, set_tags
+from lib.file import get_tags, set_tags, loudness
 
 
 def main():

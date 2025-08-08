@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 from lib.utils import find_audio_files
-from lib.tagging import set_tags
+from lib.file import set_tags
 import sys
 import re
 

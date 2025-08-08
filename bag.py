@@ -13,8 +13,8 @@ import os
 from pathlib import Path
 from lib.config import WORKSPACE_ROOT, BAG_ROOT, BAG_LUFS
 from lib.utils import find_audio_files
-from lib.tagging import get_tags, touch_comment
-from lib.file import to_bag
+from lib.file import get_tags, touch_comment_tag, to_bag
+
 
 def check_tauglichkeit(files):
     """
@@ -28,8 +28,10 @@ def check_tauglichkeit(files):
             untauglich.append((f, tags))
     return untauglich
 
+
 def main():
-    files = [Path(WORKSPACE_ROOT).resolve() / rel for rel in find_audio_files(WORKSPACE_ROOT)]
+    files = [Path(WORKSPACE_ROOT).resolve() /
+             rel for rel in find_audio_files(WORKSPACE_ROOT)]
     if not files:
         print(f"[INFO] Keine Audiodateien in {WORKSPACE_ROOT} gefunden.")
         sys.exit(0)
@@ -44,10 +46,12 @@ def main():
             if not tags["lufs"]:
                 missing.append("LUFS")
             print(f"  {f} fehlt: {', '.join(missing)}")
-        print(f"\n{len(untauglich)} Dateien sind nicht bag-tauglich. Vorgang abgebrochen!")
+        print(
+            f"\n{len(untauglich)} Dateien sind nicht bag-tauglich. Vorgang abgebrochen!")
         sys.exit(1)
 
-    print(f"[INFO] {len(files)} Dateien werden in den Bag exportiert (Target LUFS: {BAG_LUFS})")
+    print(
+        f"[INFO] {len(files)} Dateien werden in den Bag exportiert (Target LUFS: {BAG_LUFS})")
     os.makedirs(BAG_ROOT, exist_ok=True)
 
     ok, err = 0, 0
@@ -63,13 +67,14 @@ def main():
                 src_lufs=lufs,
                 target_lufs=BAG_LUFS
             )
-            touch_comment(out_flac)
+            touch_comment_tag(out_flac)
             print(f"[OK] {f} → {out_flac} ({lufs:+.1f}dB → {BAG_LUFS:+.1f}dB)")
             ok += 1
         except Exception as e:
             print(f"[FEHLER] {f}: {e}")
             err += 1
     print(f"\n[INFO] {ok} Dateien erfolgreich baggiert, {err} Fehler.")
+
 
 if __name__ == "__main__":
     main()
