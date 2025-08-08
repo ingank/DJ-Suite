@@ -1,7 +1,6 @@
 # lib/hash.py
 
 from typing import Iterator, Tuple, Optional, Dict, List, Set
-from itertools import product
 from collections import defaultdict
 from pathlib import Path
 from lib.soundfile import sha256
