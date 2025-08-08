@@ -3,7 +3,7 @@
 from typing import Iterator, Tuple, Optional, Dict, List, Set
 from collections import defaultdict
 from pathlib import Path
-from lib.soundfile import sha256
+from lib.file import sha256
 from lib.utils import find_audio_files
 
 

@@ -14,7 +14,7 @@ from pathlib import Path
 from lib.config import WORKSPACE_ROOT, BAG_ROOT, BAG_LUFS
 from lib.utils import find_audio_files
 from lib.tagging import get_tags, touch_comment
-from lib.soundfile import to_bag
+from lib.file import to_bag
 
 def check_tauglichkeit(files):
     """

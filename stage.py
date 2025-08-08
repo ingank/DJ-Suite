@@ -8,7 +8,7 @@ Abhängigkeiten: lib.transcode, lib.sha256, lib.tagging, lib.config, lib.utils
 
 import os
 from pathlib import Path
-from lib.soundfile import sha256, to_stage
+from lib.file import sha256, to_stage
 from lib.tagging import set_tags, touch_comment
 from lib.config import STAGE_ROOT, AUDIO_EXTENSIONS
 from lib.utils import find_audio_files, get_timestamp
