@@ -37,22 +37,48 @@ def make_filename(
     return Path(name)
 
 
-def find_audio_files(root, absolute=False, depth=None):
+# def find_audio_files(root, absolute=False, depth=None):
+#     """
+#     Generator: Gibt alle Audiodateien (laut config.py) unterhalb von root zurück.
+#     Standardmäßig RELATIVE Pfade (absolute=False).
+#     Wenn absolute=True, gibt die Funktion absolute Pfade zurück.
+#     Optional: depth begrenzt die maximale Verzeichnistiefe (None = unbegrenzt).
+#     """
+#     root = Path(root).resolve()
+#     root_depth = len(root.parts)
+#     for dirpath, _, filenames in os.walk(root):
+#         curr_depth = len(Path(dirpath).parts) - root_depth
+#         # Suchtiefe prüfen: Wenn depth gesetzt ist und die aktuelle Tiefe überschritten wird,
+#         # wird dieses Verzeichnis (und seine Unterverzeichnisse) übersprungen.
+#         if depth is not None and curr_depth > depth:
+#             continue
+#         for name in filenames:
+#             file = (Path(dirpath) / name).resolve()
+#             if file.suffix.lower() in AUDIO_EXTENSIONS:
+#                 yield file if absolute else file.relative_to(root)
+
+
+from pathlib import Path
+import os
+from lib.config import AUDIO_EXTENSIONS
+
+def find_audio_files(root, absolute=False, depth=None, generating=False):
     """
-    Generator: Gibt alle Audiodateien (laut config.py) unterhalb von root zurück.
+    Liefert entweder eine Liste (generating=False, Standard) oder einen Generator (generating=True).
     Standardmäßig RELATIVE Pfade (absolute=False).
-    Wenn absolute=True, gibt die Funktion absolute Pfade zurück.
-    Optional: depth begrenzt die maximale Verzeichnistiefe (None = unbegrenzt).
+    Optional: depth = maximale Verzeichnistiefe (None = unbegrenzt).
     """
     root = Path(root).resolve()
     root_depth = len(root.parts)
-    for dirpath, _, filenames in os.walk(root):
-        curr_depth = len(Path(dirpath).parts) - root_depth
-        # Suchtiefe prüfen: Wenn depth gesetzt ist und die aktuelle Tiefe überschritten wird,
-        # wird dieses Verzeichnis (und seine Unterverzeichnisse) übersprungen.
-        if depth is not None and curr_depth > depth:
-            continue
-        for name in filenames:
-            file = (Path(dirpath) / name).resolve()
-            if file.suffix.lower() in AUDIO_EXTENSIONS:
-                yield file if absolute else file.relative_to(root)
+
+    def _generator():
+        for dirpath, _, filenames in os.walk(root):
+            curr_depth = len(Path(dirpath).parts) - root_depth
+            if depth is not None and curr_depth > depth:
+                continue
+            for name in filenames:
+                file = (Path(dirpath) / name).resolve()
+                if file.suffix.lower() in AUDIO_EXTENSIONS:
+                    yield file if absolute else file.relative_to(root)
+
+    return _generator() if generating else list(_generator())

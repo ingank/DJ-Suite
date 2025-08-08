@@ -1,22 +1,28 @@
-# lib/soundfile.py
+"""
+lib/file.py
+
+Zentrale Library für Audio-Hashing, Loudness-Messung, FLAC-Konvertierung und FLAC-Tagging.
+Wird verwendet zur Vorbereitung, Analyse und Verwaltung von Audio-Tracks im Produktionsworkflow.
+"""
 
 import subprocess
 import hashlib
 import shutil
-import os
 import re
+import os
 from mutagen.flac import FLAC
 from lib.config import AUDIO_EXTENSIONS
 
 
+# === Audioanalyse & Konvertierung ===
+
 def sha256(file):
     """
-    Berechnet den SHA-256-Hash eines Audiofiles basierend auf seinem 
-    unkomprimierten PCM-Audiostream in 24-bit / 96kHz (Stereo).
-
-    Der Hash dient als systemweite, wiederholbare Identifikation (MX-ID).
-    Dabei wird der Audiostream der Datei formatunabhängig (z.B. FLAC, MP3, WAV) 
-    mit ffmpeg extrahiert, in einheitliches Format konvertiert und gehasht.
+    Berechnet den SHA-256-Hash des Audiostreams einer Datei.
+    Verwendet PCM 24bit/96kHz Stereo als normiertes Zwischenformat.
+    Dient zur eindeutigen Wiedererkennung (MX-ID).
+    Eingabeformat ist flexibel (z. B. MP3, FLAC, WAV).
+    Gibt hexadezimale Hash-Zeichenkette zurück.
     """
     ffmpeg_cmd = [
         'ffmpeg', '-y', '-i', str(file),
@@ -37,6 +43,13 @@ def sha256(file):
 
 
 def loudness(file):
+    """
+    Misst LUFS und Loudness Range (LRA) mit ffmpeg-ebur128-Filter.
+    Gibt Lautheitswert und Dynamik als Tuple zurück.
+    LUFS wird auf Basis der gesamten Datei berechnet.
+    Benötigt ffmpeg im Systempfad.
+    Liefert Werte wie z. B. (-13.7, 8.2)
+    """
     ffmpeg_cmd = [
         'ffmpeg', '-hide_banner', '-nostats',
         '-i', str(file),
@@ -71,7 +84,6 @@ def loudness(file):
                 lra = float(m.group(1))
         if in_summary and (lufs is not None) and (lra is not None):
             break
-
     return lufs, lra
 
 
@@ -89,10 +101,8 @@ def to_stage(src, dst_flac, flac_copy=True):
     if ext == ".flac":
         if flac_copy:
             shutil.copy2(src, dst_flac)
-            # print(f"[OK] FLAC kopiert: {src} → {dst_flac}")
             return
         else:
-            # print(f"[INFO] FLAC wird neu codiert: {src} → {dst_flac}")
             mp3_mode = False
     elif ext == ".mp3":
         mp3_mode = True
@@ -116,9 +126,7 @@ def to_stage(src, dst_flac, flac_copy=True):
     try:
         subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, check=True)
-        # print(f"[OK] Konvertiert: {src} → {dst_flac}")
     except subprocess.CalledProcessError as e:
-        # print(f"[FEHLER] Fehler bei der Konvertierung: {src} → {dst_flac}")
         raise e
 
 
@@ -139,3 +147,42 @@ def to_bag(src_flac, dst_flac, src_lufs, target_lufs):
     result = subprocess.run(
         ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True
     )
+
+
+# === Tagging-Funktionen ===
+
+def set_tags(flac_path, tags, overwrite=True):
+    """
+    Setzt Metadaten-Tags in einer FLAC-Datei.
+    Bestehende Tags können optional erhalten bleiben.
+    Alle Tag-Namen werden in Kleinbuchstaben gespeichert.
+    """
+    audio = FLAC(flac_path)
+    for k, v in tags.items():
+        if overwrite or k not in audio:
+            audio[k] = [str(v)]
+    audio.save()
+
+
+def get_tags(flac_path, tags=None):
+    """
+    Liest Metadaten-Tags aus einer FLAC-Datei.
+    Gibt ein Dictionary zurück.
+    Bei Angabe einer Tagliste wird nur diese zurückgegeben.
+    """
+    audio = FLAC(flac_path)
+    if tags is None:
+        return dict(audio)
+    return {k: audio.get(k, [None])[0] for k in tags}
+
+
+def touch_comment_tag(flac_path):
+    """
+    Stellt sicher, dass ein Kommentar für FLAC-Dateien im Standardfeld 'COMMENT' steht.
+    Kopiert ggf. den Inhalt aus 'description', entfernt dieses Feld danach und speichert die Datei.
+    """
+    flac_file = FLAC(flac_path)
+    if "description" in flac_file:
+        flac_file["COMMENT"] = flac_file["description"]
+        del flac_file["description"]
+        flac_file.save()

@@ -34,7 +34,8 @@ import shutil
 import argparse
 from pathlib import Path
 from lib.hash import scan, match, write, read, dupes, diff, sort_by_path, sort_by_hash_path
-from lib.utils import make_filename
+from lib.tagging import get_tags
+from lib.utils import make_filename, find_audio_files
 from lib.config import STAGE_ROOT
 
 
@@ -101,6 +102,12 @@ def main():
     move_parser.add_argument(
         "hashfile",
         help="Hashdatei, deren Dateien verschoben werden sollen"
+    )
+
+    # READ
+    read_parser = subparsers.add_parser(
+        "read",
+        help="Liest SHA256-Tags (gen0-sha256) aus Audiodateien und schreibt eine Hash-Datei"
     )
 
     args = parser.parse_args()
@@ -228,6 +235,38 @@ def main():
 
         # Ausgeben & Schreiben
         for line in write(outfile, move_and_yield(all_lines)):
+            print(line)
+
+    elif args.command == "read":
+        files = list(find_audio_files(".", absolute=False))
+        if not files:
+            print("[INFO] Keine Audiodateien gefunden.")
+            exit(0)
+
+        missing = []
+        results = []
+
+        for relpath in files:
+            file = Path('.') / relpath
+            hashval = get_tags(file, "gen0-sha256")
+            print(".", end="", flush=True)  # Fortschrittspunkt pro Datei
+            if not hashval:
+                missing.append(relpath)
+            else:
+                results.append((hashval, relpath.as_posix()))
+
+        print()
+        
+        if missing:
+            print(
+                "[ERROR] Die folgenden Dateien haben keinen gültigen GEN0-SHA256-Tag:")
+            for relpath in missing:
+                print(f"  - {relpath}")
+            print("\n[ABBRUCH] Vorgang wurde beendet. Keine Hash-Datei geschrieben.")
+            exit(1)
+
+        outfile = make_filename("hash-read")
+        for line in write(outfile, iter(results)):
             print(line)
 
 

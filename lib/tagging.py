@@ -1,5 +1,5 @@
 """
-tagging.py
+lib/tagging.py
 
 FLAC-Tagging-Toolkit für Mutagen
 
