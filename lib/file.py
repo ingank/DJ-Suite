@@ -137,11 +137,19 @@ def to_bag(src_flac, dst_flac, src_lufs, target_lufs):
     Annahme: Input ist FLAC, Output immer FLAC, 24bit, 44.1kHz.
     """
     lufs_diff = target_lufs - src_lufs  # z.B. -21.0 - (-13.2) = -7.8dB Gain
+    # Wir setzen sample_fmt bewusst auf s32:
+    # - ffmpeg kennt kein 's24' als sample_fmt, nur s16, s32, flt usw.
+    # - s32 ist universell und kann 16-, 24- und 32-Bit-Quellen verlustfrei aufnehmen.
+    #   * 16-Bit → verlustfrei auf 32 Bit gepaddet (8 + 8 leere Bits)
+    #   * 24-Bit → verlustfrei auf 32 Bit gepaddet (8 leere Bits)
+    #   * 32-Bit → bleibt exakt erhalten
+    # - FLAC komprimiert die 32-Bit-Daten verlustfrei, d. h. die Original-Bittiefe
+    #   bleibt im Audiomaterial erhalten, egal ob 16, 24 oder 32 Bit.
     ffmpeg_cmd = [
         'ffmpeg', '-y', '-i', str(src_flac),
         '-af', f'volume={lufs_diff:.1f}dB,aresample=resampler=soxr',
         '-c:a', 'flac',
-        '-sample_fmt', 's32',   # 24bit in FLAC
+        '-sample_fmt', 's32',
         '-ar', '44100',
         str(dst_flac)
     ]
