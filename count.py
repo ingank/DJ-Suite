@@ -20,7 +20,7 @@ def collect_audio_stats(root, extensions):
     subfolders = set()
     name_map = defaultdict(list)
 
-    for rel_path in find_audio_files(root):
+    for rel_path in find_audio_files(root, filter_ext=EXTENDED_AUDIO_EXTENSIONS):
         if rel_path.suffix.lower() not in extensions:
             continue
         total += 1
