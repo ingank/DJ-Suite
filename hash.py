@@ -238,7 +238,7 @@ def main():
             print(line)
 
     elif args.command == "read":
-        files = list(find_audio_files(".", absolute=False))
+        files = find_audio_files(".", absolute=False, filter_ext=[".flac"])
         if not files:
             print("[INFO] Keine Audiodateien gefunden.")
             exit(0)
