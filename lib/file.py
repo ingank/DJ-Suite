@@ -10,6 +10,7 @@ import hashlib
 import shutil
 import re
 import os
+from pathlib import Path
 from mutagen.flac import FLAC
 from lib.config import AUDIO_EXTENSIONS
 
@@ -149,7 +150,29 @@ def to_bag(src_flac, dst_flac, src_lufs, target_lufs):
     )
 
 
+def renew_flac(file: Path, padding: int = 65536) -> Path:
+    """
+    Erzeugt <file>.new via flac (mit Padding) und führt touch_comment_tag() darauf aus.
+    Gibt den Pfad zur .new-Datei zurück.
+    Erwartet: file.suffix == '.flac'. Wirft bei Fehlern Exceptions.
+    """
+    if not file.is_file() or file.suffix.lower() != ".flac":
+        raise ValueError(f"Ungültige Datei: {file}")
+
+    new_file = file.with_suffix(".flac.new")
+
+    subprocess.run(
+        ["flac", "--force", "--padding",
+            str(padding), "-o", str(new_file), str(file)],
+        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+
+    touch_comment_tag(new_file)
+    return new_file
+
+
 # === Tagging-Funktionen ===
+
 
 def set_tags(flac_path, tags, overwrite=True):
     """
