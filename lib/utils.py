@@ -58,28 +58,24 @@ def make_filename(
 #                 yield file if absolute else file.relative_to(root)
 
 
-def find_audio_files(root, absolute=False, depth=None, generating=False, filter_ext=None):
+def find_audio_files(root, absolute: bool = False, depth: Optional[int] = None, filter_ext=None):
     """
-    Liefert entweder eine Liste (generating=False) oder einen Generator (generating=True).
-    Standardmäßig RELATIVE Pfade (absolute=False).
-    Optional: depth = maximale Verzeichnistiefe (None = unbegrenzt).
-    Optional: filter_ext = Liste von Endungen (z. B. [".flac", ".mp3"]), sonst: alle AUDIO_EXTENSIONS.
+    Gibt eine LISTE aller Audiodateien (Snapshot) unterhalb von root zurück.
+    - Standard: RELATIVE Pfade (absolute=False)
+    - depth: maximale Verzeichnistiefe (None = unbegrenzt)
+    - filter_ext: Liste erlaubter Endungen (z. B. [".flac", ".mp3"]), sonst AUDIO_EXTENSIONS
     """
     root = Path(root).resolve()
     root_depth = len(root.parts)
+    filter_set = set(ext.lower() for ext in (filter_ext or AUDIO_EXTENSIONS))
 
-    # Normalize Extension-Filter (kleingeschrieben mit Punkt)
-    filter_set = set(ext.lower()
-                     for ext in filter_ext) if filter_ext else set(AUDIO_EXTENSIONS)
-
-    def _generator():
-        for dirpath, _, filenames in os.walk(root):
-            curr_depth = len(Path(dirpath).parts) - root_depth
-            if depth is not None and curr_depth > depth:
-                continue
-            for name in filenames:
-                file = (Path(dirpath) / name).resolve()
-                if file.suffix.lower() in filter_set:
-                    yield file if absolute else file.relative_to(root)
-
-    return _generator() if generating else list(_generator())
+    results = []
+    for dirpath, _, filenames in os.walk(root):
+        curr_depth = len(Path(dirpath).parts) - root_depth
+        if depth is not None and curr_depth > depth:
+            continue
+        for name in filenames:
+            file = (Path(dirpath) / name).resolve()
+            if file.suffix.lower() in filter_set:
+                results.append(file if absolute else file.relative_to(root))
+    return results
