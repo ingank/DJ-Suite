@@ -1,21 +1,30 @@
-# lib/config.py
+"""
+lib/config.py
+
+Zentrale Konfigurations- und Pfaddefinitionen für die DJ-Suite.
+
+Diese Datei:
+- Definiert PROJECT_ROOT als Basis für alle relativen Pfade
+- Lädt die YAML-Konfiguration (djs-config.yaml)
+- Stellt wichtige Verzeichnis- und Dateipfade bereit
+- Definiert unterstützte Audioformate
+- Enthält Hilfsfunktionen für Verzeichnisstruktur und Dateitypprüfungen
+"""
 
 import os
 import yaml
+
+# --- Projektbasis ---
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+# --- YAML-Konfiguration einlesen ---
+CONFIG_PATH = os.path.join(PROJECT_ROOT, "djs-config.yaml")
 
 
 def _expand_path(path):
     """Hilfsfunktion zur Expansion von ~ im YAML"""
     return os.path.expanduser(path) if isinstance(path, str) and path.startswith("~") else path
 
-
-# --- YAML-Konfiguration einlesen ---
-CONFIG_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    '..',
-    'djs-config.yaml'
-)
-CONFIG_PATH = os.path.abspath(CONFIG_PATH)
 
 with open(CONFIG_PATH, "r", encoding="utf-8") as f:
     cfg = yaml.safe_load(f)
@@ -26,10 +35,10 @@ DB_NAME = cfg.get("database_name", ".DB")
 LOG_LEVEL = cfg.get("log_level", "INFO")
 BAG_LUFS = float(cfg.get("bag_lufs", -21.0))
 
-# --- Unterstützte/verarbeitete Audioformate (Workflow-relevant) ---
+# --- Unterstützte/verarbeitete Audioformate ---
 AUDIO_EXTENSIONS = [".wav", ".flac", ".mp3", ".aiff", ".aifc"]
 
-# --- Erweiterte Liste für Suchfunktionen (inkl. unterstützter Formate) ---
+# --- Erweiterte Liste für Suchfunktionen ---
 EXTENDED_AUDIO_EXTENSIONS = sorted(set(
     AUDIO_EXTENSIONS + [
         '.aif', '.aac', '.alac', '.ogg', '.oga', '.opus',
@@ -39,7 +48,7 @@ EXTENDED_AUDIO_EXTENSIONS = sorted(set(
     ]
 ))
 
-# --- Pfade zu fest definierten Arbeitsverzeichnissen ---
+# --- Abgeleitete Projektverzeichnisse ---
 RAW_ROOT = os.path.join(LIBRARY_ROOT, "00 RAW")
 ARCHIV_ROOT = os.path.join(LIBRARY_ROOT, "10 ARCHIV")
 STAGE_ROOT = os.path.join(LIBRARY_ROOT, "20 STAGE")
@@ -58,11 +67,16 @@ ALL_ROOT_DIRS = [
     TEMP_ROOT,
 ]
 
+# --- Pfade zu statischen Ressourcen ---
+PICS_ROOT = os.path.join(PROJECT_ROOT, "lib", "pics")
+EMPTY_COVER = os.path.join(PICS_ROOT, "empty.png")
+
+# --- Hilfsfunktionen ---
+
 
 def create_directory_structure():
     """
     Erstellt LIBRARY_ROOT und alle Projektverzeichnisse darunter.
-    Bricht bei Fehlern ab (kein Fehlerhandling).
     """
     os.makedirs(LIBRARY_ROOT, exist_ok=True)
     for path in ALL_ROOT_DIRS:
