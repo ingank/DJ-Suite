@@ -2,7 +2,7 @@
 
 import subprocess
 import hashlib
-from typing import Iterator, Tuple, Optional, Dict, List, Set
+from typing import Iterator, Iterable, Tuple, Optional, Dict, List, Set
 from collections import defaultdict
 from pathlib import Path
 from lib.utils import find_audio_files
@@ -142,3 +142,12 @@ def sha256(file: Path) -> str:
         hasher.update(chunk)
     proc.wait()
     return hasher.hexdigest()
+
+
+def sha256_iter(root: Path, rel_paths: Iterable[Path]) -> Iterator[Tuple[str, str]]:
+    """
+    Generator: liefert (hash, relpath) für gegebene RELATIVE Pfade unterhalb von root.
+    """
+    root = Path(root).resolve()
+    for relpath in rel_paths:
+        yield sha256(root / relpath), relpath.as_posix()
