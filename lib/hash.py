@@ -1,9 +1,10 @@
 # lib/hash.py
 
+import subprocess
+import hashlib
 from typing import Iterator, Tuple, Optional, Dict, List, Set
 from collections import defaultdict
 from pathlib import Path
-from lib.file import sha256
 from lib.utils import find_audio_files
 
 
@@ -114,3 +115,30 @@ def sort_by_hash_path(items: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
     Gibt eine neue Liste zurück, sortiert erst nach Hash, dann nach Pfad (beides aufsteigend).
     """
     return sorted(items, key=lambda t: (t[0], t[1]))
+
+
+def sha256(file: Path) -> str:
+    # Neu aus lib.file hierher verschoben
+    """
+    Berechnet den SHA-256-Hash des Audiostreams einer Datei.
+    Verwendet PCM 24bit/96kHz Stereo als normiertes Zwischenformat.
+    Eingabeformat ist flexibel (z. B. MP3, FLAC, WAV).
+    Gibt hexadezimale Hash-Zeichenkette zurück.
+    """
+    ffmpeg_cmd = [
+        'ffmpeg', '-y', '-i', str(file),
+        '-map', '0:a:0',
+        '-vn', '-acodec', 'pcm_s24le', '-ar', '96000', '-ac', '2',
+        '-f', 's24le', '-'
+    ]
+    proc = subprocess.Popen(
+        ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+    )
+    hasher = hashlib.sha256()
+    while True:
+        chunk = proc.stdout.read(1024 * 1024)
+        if not chunk:
+            break
+        hasher.update(chunk)
+    proc.wait()
+    return hasher.hexdigest()

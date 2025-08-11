@@ -26,7 +26,6 @@ from __future__ import annotations
 
 from PIL import Image
 import subprocess
-import hashlib
 import shutil
 import re
 import os
@@ -97,31 +96,6 @@ def _shrink_to_max_1024(png_path: Path) -> None:
 # =====================================================================
 # Audioanalyse & Konvertierung (bestehende Utilities)
 # =====================================================================
-
-def sha256(file: Path) -> str:
-    """
-    Berechnet den SHA-256-Hash des Audiostreams einer Datei.
-    Verwendet PCM 24bit/96kHz Stereo als normiertes Zwischenformat.
-    Dient zur eindeutigen Wiedererkennung (MX-ID).
-    Eingabeformat ist flexibel (z. B. MP3, FLAC, WAV).
-    Gibt hexadezimale Hash-Zeichenkette zurück.
-    """
-    ffmpeg_cmd = [
-        'ffmpeg', '-y', '-i', str(file),
-        '-map', '0:a:0',
-        '-vn', '-acodec', 'pcm_s24le', '-ar', '96000', '-ac', '2',
-        '-f', 's24le', '-'
-    ]
-    proc = subprocess.Popen(
-        ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    hasher = hashlib.sha256()
-    while True:
-        chunk = proc.stdout.read(1024 * 1024)
-        if not chunk:
-            break
-        hasher.update(chunk)
-    proc.wait()
-    return hasher.hexdigest()
 
 
 def loudness(file: Path) -> tuple[float | None, float | None]:
