@@ -50,18 +50,6 @@ def write(filepath: str, items: Iterator[Tuple[str, str]]) -> Iterator[str]:
             yield line  # Generator: Zeile auch zurückgeben
 
 
-def scan(directory: str, depth: Optional[int] = None) -> Iterator[Tuple[str, str]]:
-    """
-    Findet alle unterstützten Audiodateien im Verzeichnis (rekursiv, optional bis zu gegebener Tiefe),
-    berechnet SHA256-Hashes und gibt (hash, relpath) für jede Datei zurück.
-    """
-    root = Path(directory).resolve()
-    # Achtung: find_audio_files gibt RELATIVE Pfade, wenn absolute=False
-    for relpath in find_audio_files(root, absolute=False, depth=depth):
-        hashval = sha256(root / relpath)
-        yield hashval, relpath.as_posix()
-
-
 def dupes(items: Iterator[Tuple[str, str]]) -> Dict[str, List[str]]:
     """
     Liefert ein Dict aller Hashes, die mehrfach vorkommen,
