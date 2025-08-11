@@ -33,7 +33,8 @@ Hash file format:
 import shutil
 import argparse
 from pathlib import Path
-from lib.hash import scan, match, write, read, dupes, diff, sort_by_path, sort_by_hash_path
+from lib.hash import scan, match, write, read, dupes, diff
+from lib.hash import sort_by_path, sort_by_hash_path, sha256_iter
 from lib.file import get_tags
 from lib.utils import make_filename, find_audio_files
 from lib.config import STAGE_ROOT
@@ -113,10 +114,10 @@ def main():
     args = parser.parse_args()
 
     if args.command == "scan":
-        # Generator für Scan-Ergebnisse (hash, path)
-        results = scan(args.directory)
+        root = Path(args.directory).resolve()
+        rel_files = find_audio_files(root, absolute=False)  # RELATIVE Pfade
         outfile = make_filename("hash-scan")
-        for line in write(outfile, results):
+        for line in write(outfile, sha256_iter(root, rel_files)):
             print(line)
 
     elif args.command == "diff":
