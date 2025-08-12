@@ -5,7 +5,6 @@ import hashlib
 from typing import Iterator, Iterable, Tuple, Optional, Dict, List, Set
 from collections import defaultdict
 from pathlib import Path
-from lib.utils import find_audio_files
 
 
 def read(filepath: str) -> Iterator[Tuple[str, str]]:
