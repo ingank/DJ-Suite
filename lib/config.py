@@ -8,11 +8,26 @@ Diese Datei:
 - Lädt die YAML-Konfiguration (djs-config.yaml)
 - Stellt wichtige Verzeichnis- und Dateipfade bereit
 - Definiert unterstützte Audioformate
-- Enthält Hilfsfunktionen für Verzeichnisstruktur und Dateitypprüfungen
+- Enthält Hilfsfunktionen für Verzeichnisstruktur
 """
 
 import os
+import sys
+import shutil
 import yaml
+
+# --- Externe Abhängigkeiten: HARTE Prüfung beim Import ---
+_HAS_FFMPEG = shutil.which("ffmpeg") is not None
+_HAS_FFPROBE = shutil.which("ffprobe") is not None
+if not (_HAS_FFMPEG and _HAS_FFPROBE):
+    missing = []
+    if not _HAS_FFMPEG:
+        missing.append("ffmpeg")
+    if not _HAS_FFPROBE:
+        missing.append("ffprobe")
+    sys.stderr.write(f"Fehlende Abhängigkeiten: {', '.join(missing)}\n")
+    raise RuntimeError(
+        "Kritische Abhängigkeiten fehlen – bitte installieren und im PATH verfügbar machen.")
 
 # --- Projektbasis ---
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -35,18 +50,25 @@ DB_NAME = cfg.get("database_name", ".DB")
 LOG_LEVEL = cfg.get("log_level", "INFO")
 BAG_LUFS = float(cfg.get("bag_lufs", -21.0))
 
-# --- Unterstützte/verarbeitete Audioformate ---
-AUDIO_EXTENSIONS = [".wav", ".flac", ".mp3", ".aiff", ".aifc"]
+# --- Audio-Formate ---
+# Primäre/verarbeitete Audioformate im Workflow:
+PRIMARY_AUDIO_EXTENSIONS = [".mp3", ".flac", ".wav", ".aiff", ".aifc"]
 
-# --- Erweiterte Liste für Suchfunktionen ---
-EXTENDED_AUDIO_EXTENSIONS = sorted(set(
-    AUDIO_EXTENSIONS + [
-        '.aif', '.aac', '.alac', '.ogg', '.oga', '.opus',
-        '.wma', '.wv', '.ape', '.m4a', '.mp4', '.mov',
-        '.amr', '.ac3', '.dts', '.mka', '.spx', '.ra',
-        '.au', '.snd', '.caf', '.tta', '.gsm'
-    ]
-))
+# Bekannte Audio-/Multimedia-Formate (enger kuratiert):
+#   Diese Liste wurde aus ffmpeg-Ausgaben (`-demuxers` und `-decoders`) abgeleitet
+#   und enthält nur Container-/Rohformate, die Audio enthalten können und deren
+#   Audiostreams ffmpeg demuxen + decodieren kann. Stand: August 2025.
+KNOWN_AUDIO_EXTENSIONS = sorted(set([
+    ".3g2", ".3gp", ".aac", ".ac3", ".aif", ".aifc", ".aiff", ".alac", ".amr",
+    ".ape", ".asf", ".au", ".caf", ".dts", ".eac3", ".flac", ".g722", ".g726",
+    ".gsm", ".m4a", ".m4b", ".mka", ".mkv", ".mlp", ".mov", ".mp2", ".mp3",
+    ".mpa", ".mpc", ".mp4", ".oga", ".ogg", ".oma", ".opus", ".qcp", ".tak",
+    ".thd", ".tta", ".voc", ".wav", ".w64", ".wma", ".wv"
+]))
+
+# Rückwärtskompatible Alias-Namen (damit bestehender Code weiter läuft)
+AUDIO_EXTENSIONS = PRIMARY_AUDIO_EXTENSIONS
+EXTENDED_AUDIO_EXTENSIONS = KNOWN_AUDIO_EXTENSIONS
 
 # --- Abgeleitete Projektverzeichnisse ---
 RAW_ROOT = os.path.join(LIBRARY_ROOT, "00 RAW")
@@ -81,17 +103,3 @@ def create_directory_structure():
     os.makedirs(LIBRARY_ROOT, exist_ok=True)
     for path in ALL_ROOT_DIRS:
         os.makedirs(path, exist_ok=True)
-
-
-def is_supported_audio_file(filename):
-    """
-    True, wenn die Datei eine für den Workflow unterstützte Erweiterung hat.
-    """
-    return any(filename.lower().endswith(ext) for ext in AUDIO_EXTENSIONS)
-
-
-def is_known_audio_file(filename):
-    """
-    True, wenn die Datei eine bekannte, potenziell unterstützte Audio-/Multimedia-Erweiterung hat.
-    """
-    return any(filename.lower().endswith(ext) for ext in EXTENDED_AUDIO_EXTENSIONS)
