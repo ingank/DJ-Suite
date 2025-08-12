@@ -10,7 +10,7 @@ from mutagen.flac import FLAC, Picture
 
 from lib import config
 from lib.utils import get_timestamp
-from lib.file import loudness as loudness_measure
+from lib.utils import loudness as loudness_measure
 from lib.hash import sha256 as hash_sha256
 
 __all__ = [

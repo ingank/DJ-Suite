@@ -27,7 +27,6 @@ from __future__ import annotations
 from PIL import Image
 import subprocess
 import shutil
-import re
 import os
 import json
 from datetime import datetime
