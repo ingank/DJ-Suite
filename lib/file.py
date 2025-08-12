@@ -40,6 +40,7 @@ from flac import touch_comment_tag
 # Hilfsfunktionen (allgemein)
 # =====================================================================
 
+
 def _timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -91,52 +92,6 @@ def _shrink_to_max_1024(png_path: Path) -> None:
     if img.width > 1024 or img.height > 1024:
         img.thumbnail((1024, 1024), Image.LANCZOS)
         img.save(png_path, format="PNG")
-
-
-# =====================================================================
-# Audioanalyse & Konvertierung (bestehende Utilities)
-# =====================================================================
-
-
-def loudness(file: Path) -> tuple[float | None, float | None]:
-    """
-    Misst LUFS und Loudness Range (LRA) mit ffmpeg-ebur128-Filter.
-    Gibt Lautheitswert und Dynamik als Tuple zurück.
-    LUFS wird auf Basis der gesamten Datei berechnet.
-    Liefert Werte wie z. B. (-13.7, 8.2)
-    """
-    ffmpeg_cmd = [
-        'ffmpeg', '-hide_banner', '-nostats',
-        '-i', str(file),
-        '-map', '0:a:0',
-        '-af', 'ebur128',
-        '-f', 'null', '-'
-    ]
-    result = subprocess.run(
-        ffmpeg_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        encoding="utf-8",
-        errors="replace"
-    )
-    stderr = result.stderr
-    lufs = lra = None
-    in_summary = False
-
-    for line in stderr.splitlines():
-        if 'Summary:' in line:
-            in_summary = True
-        elif in_summary and 'I:' in line and 'LUFS' in line:
-            m = re.search(r'I:\s*(-?\d+\.\d+)\s*LUFS', line)
-            if m:
-                lufs = float(m.group(1))
-        elif in_summary and 'LRA:' in line and 'LU' in line:
-            m = re.search(r'LRA:\s*(-?\d+\.\d+)\s*LU', line)
-            if m:
-                lra = float(m.group(1))
-        if in_summary and (lufs is not None) and (lra is not None):
-            break
-    return lufs, lra
 
 
 # =====================================================================
