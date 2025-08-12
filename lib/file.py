@@ -34,7 +34,7 @@ from datetime import datetime
 from pathlib import Path
 from mutagen.flac import FLAC, Picture
 from lib import config
-
+from flac import touch_comment_tag
 
 # =====================================================================
 # Hilfsfunktionen (allgemein)
@@ -320,89 +320,4 @@ def to_bag(src_flac: Path, dst_flac: Path, src_lufs: float, target_lufs: float) 
     ]
     subprocess.run(
         ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True
-    )
-
-
-# =====================================================================
-# Tagging: Lesen/Schreiben/Touch
-# =====================================================================
-
-def set_tags(flac_path: Path, tags: dict, overwrite: bool = True) -> None:
-    """
-    Setzt beliebige Tags (übergeben als dict) in einer FLAC-Datei.
-    - Keys werden zu Kleinbuchstaben normalisiert (mutagen/FLAC-Usus).
-    - Wenn overwrite=False, werden vorhandene Tags NICHT überschrieben.
-    """
-    audio = FLAC(str(flac_path))
-    for tag, value in tags.items():
-        k = tag.lower()
-        if overwrite or k not in audio:
-            audio[k] = str(value)
-    audio.save()
-
-
-def get_tags(flac_path: Path, tags=None):
-    """
-    Liest Tags aus einer FLAC-Datei.
-
-    - Ohne tags:        Gibt alle Tags als dict zurück.
-    - Mit String:       Gibt den Wert (oder None) für EIN Tag zurück.
-    - Mit Liste/Tuple:  Gibt dict mit diesen Tags zurück (fehlende: None).
-    """
-    audio = FLAC(str(flac_path))
-    all_tags = {k.lower(): v for k, v in dict(audio).items()}
-
-    if tags is None:
-        return all_tags
-
-    if isinstance(tags, str):
-        return all_tags.get(tags.lower(), [None])[0]
-
-    return {tag: all_tags.get(tag.lower(), [None])[0] for tag in tags}
-
-
-def touch_comment_tag(flac_path: Path) -> None:
-    """
-    Stellt sicher, dass ein Kommentar im Standardfeld 'COMMENT' steht.
-    Kopiert ggf. den Inhalt aus 'description', entfernt dieses Feld danach.
-    """
-    flac_file = FLAC(str(flac_path))
-    if "description" in flac_file:
-        flac_file["COMMENT"] = flac_file["description"]
-        del flac_file["description"]
-        flac_file.save()
-
-
-# =====================================================================
-# Legacy (vermeiden, da externe Tools flac/metaflac) – belassen für Rückwärtskompat.
-# =====================================================================
-
-def renew_flac(file: Path, padding: int = 65536) -> Path:
-    """
-    LEGACY: Erzeugt <file>.new via 'flac' (mit Padding) und führt touch_comment_tag() darauf aus.
-    Beibehalten für Alt-Workflows, aber in neuen Pfaden NICHT verwenden.
-    """
-    if not file.is_file() or file.suffix.lower() != ".flac":
-        raise ValueError(f"Ungültige Datei: {file}")
-
-    new_file = file.with_suffix(".flac.new")
-
-    subprocess.run(
-        ["flac", "--force", "--padding",
-            str(padding), "-o", str(new_file), str(file)],
-        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-
-    touch_comment_tag(new_file)
-    return new_file
-
-
-def touch_padding(flac_path: Path, size: int = 8192) -> None:
-    """
-    LEGACY: Versucht, via 'metaflac' einen PADDING-Block hinzuzufügen.
-    In neuen Workflows NICHT verwenden (ffmpeg-Remux liefert praxistaugliches Padding).
-    """
-    subprocess.run(
-        ['metaflac', f'--add-padding={size}', str(flac_path)],
-        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     )
