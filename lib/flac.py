@@ -8,10 +8,10 @@ import subprocess
 import shutil
 from mutagen.flac import FLAC, Picture
 
-import config
-from utils import get_timestamp
-from file import loudness as loudness_measure
-from hash import sha256 as hash_sha256
+from lib import config
+from lib.utils import get_timestamp
+from lib.file import loudness as loudness_measure
+from lib.hash import sha256 as hash_sha256
 
 __all__ = [
     "set_tags",
