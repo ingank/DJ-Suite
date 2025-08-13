@@ -272,3 +272,24 @@ def encode(
         },
         "notes": result_note,
     }
+
+
+def remux(
+    src_path: Path,
+    out_path: Path,
+    *,
+    rel_source_path: Optional[str] = None,
+    keep_temp: bool = False,
+) -> dict:
+    """
+    FLAC → FLAC, reiner Stream-Copy (kein Reencode), keine MX-Tags.
+    Bilder/Tags sollen 1:1 erhalten bleiben. Danach COMMENT harmonisieren.
+    Rückgabe analog zu encode(), aber ohne MX-Felder.
+    """
+    # 1) Probe: info = _ffprobe_json(src_path); erster Audiostream muss codec_name == "flac" haben, sonst Abbruch
+    # 2) Remux: _run(["ffmpeg","-v","error","-i", str(src_path), "-c:a","copy","-y", str(out_path)])
+    #    (keine -map-Optionen setzen; so wie in encode’s finalem Schritt, damit Cover/Tags erhalten bleiben)
+    # 3) touch_comment_tag(out_path)
+    # 4) optional: Cleanup temp (falls überhaupt verwendet)
+    # 5) return {"out_path": str(out_path), "actions": {"mode":"REMUX","tags_copied":True,"cover_preserved":True}}
+    raise NotImplementedError
