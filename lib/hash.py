@@ -1,5 +1,6 @@
 # lib/hash.py
 
+from typing import Iterator, Iterable, Tuple
 import subprocess
 import hashlib
 from typing import Iterator, Iterable, Tuple, Optional, Dict, List, Set
@@ -104,36 +105,90 @@ def sort_by_hash_path(items: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
     return sorted(items, key=lambda t: (t[0], t[1]))
 
 
+# lib/hash.py — Auszug: neue sha256() + unverändertes sha256_iter()
+
+
+# ---------------------------------------------------------------------------
+# Audio-Hashing (MX-HASH)
+#
+# Ziel:
+#   Ein stabiler, formatunabhängiger SHA-256 über das *dekodierte Audiosignal*,
+#   normiert auf PCM 24-bit / 96 kHz / Stereo (s24le@96k, 2ch).
+#
+# Robustheit:
+#   - ffmpeg läuft mit "-v error", damit nur echte Fehler auf stderr landen.
+#   - Wir streamen Roh-PCM über stdout in den Hasher (kein Tempfile).
+#   - Nach dem Lesen prüfen wir den Returncode:
+#       -> bei != 0: Exception mit ffmpeg-stderr (damit MX-HASH nie „halbgar“ ist).
+#
+# Ressourcen:
+#   - stdout wird nach dem Streamen geschlossen.
+#   - stderr wird im Fehlerfall ausgelesen (sonst verworfen).
+#
+# Kompatibilität:
+#   - Signatur bleibt: sha256(file: Path) -> str
+#   - sha256_iter() verwendet weiterhin sha256() und funktioniert unverändert.
+# ---------------------------------------------------------------------------
+
+
 def sha256(file: Path) -> str:
-    # Neu aus lib.file hierher verschoben
-    """
-    Berechnet den SHA-256-Hash des Audiostreams einer Datei.
-    Verwendet PCM 24bit/96kHz Stereo als normiertes Zwischenformat.
-    Eingabeformat ist flexibel (z. B. MP3, FLAC, WAV).
-    Gibt hexadezimale Hash-Zeichenkette zurück.
-    """
-    ffmpeg_cmd = [
-        'ffmpeg', '-y', '-i', str(file),
-        '-map', '0:a:0',
-        '-vn', '-acodec', 'pcm_s24le', '-ar', '96000', '-ac', '2',
-        '-f', 's24le', '-'
+    file = Path(file)
+
+    cmd = [
+        "ffmpeg", "-v", "error",  # nur echte Fehler auf stderr
+        "-i", str(file),
+        "-map", "0:a:0",
+        "-vn",
+        "-f", "s24le",            # Roh-PCM
+        "-acodec", "pcm_s24le",
+        "-ar", "96000",
+        "-ac", "2",
+        "-"                       # -> stdout
     ]
-    proc = subprocess.Popen(
-        ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
-    )
+
     hasher = hashlib.sha256()
-    while True:
-        chunk = proc.stdout.read(1024 * 1024)
-        if not chunk:
-            break
-        hasher.update(chunk)
-    proc.wait()
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    assert proc.stdout is not None
+
+    try:
+        # Stream-chunks lesen, damit kein RAM vollläuft
+        for chunk in iter(lambda: proc.stdout.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    finally:
+        # stdout schließen, dann auf ffmpeg warten
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
+
+        ret = proc.wait()
+
+        # Fehlerausgabe bei Bedarf einsammeln (nach wait gefahrlos)
+        err_out = b""
+        if proc.stderr is not None:
+            try:
+                err_out = proc.stderr.read()
+            finally:
+                proc.stderr.close()
+
+        if ret != 0:
+            # saubere, sprechende Fehlermeldung
+            raise RuntimeError(
+                f"ffmpeg hashing failed with code {ret} for {file}\n"
+                f"{err_out.decode('utf-8', errors='ignore')}"
+            )
+
     return hasher.hexdigest()
 
 
 def sha256_iter(root: Path, rel_paths: Iterable[Path]) -> Iterator[Tuple[str, str]]:
     """
     Generator: liefert (hash, relpath) für gegebene RELATIVE Pfade unterhalb von root.
+    Hinweis: unverändert — nutzt weiterhin sha256() und funktioniert wie zuvor.
     """
     root = Path(root).resolve()
     for relpath in rel_paths:

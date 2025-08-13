@@ -170,8 +170,6 @@ def encode(
         raise RuntimeError("Kein Audiostream im Eingang gefunden.")
     codec = (a.get("codec_name") or "").lower()
     sample_fmt = (a.get("sample_fmt") or "").lower()
-    # bits_per_sample ist nicht bei allen Codecs gesetzt; sample_fmt ist robuster
-    bits_per_sample = a.get("bits_per_sample")
     source_suffix = src_path.suffix.lower()
     is_src_flac = (source_suffix == ".flac")
 
@@ -232,7 +230,7 @@ def encode(
         mx_tags["MX-LUFS"] = f"{lufs:.2f}"
     if lra is not None:
         mx_tags["MX-LRA"] = f"{lra:.2f}"
-    # Hash über Zielsignal (intermediate); Details kapselt lib.hash.sha256()
+    # Hash über Originalsignal (src_path); Details kapselt lib.hash.sha256()
     mx_tags["MX-HASH"] = hash_sha256(src_path)
     # Herkunft / Zeit
     mx_tags["MX-EXTENSION"] = source_suffix.lstrip(".").upper()
