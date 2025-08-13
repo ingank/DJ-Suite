@@ -33,9 +33,9 @@ Hash file format:
 import shutil
 import argparse
 from pathlib import Path
-from lib.hash import scan, match, write, read, dupes, diff
+from lib.hash import match, write, read, dupes, diff
 from lib.hash import sort_by_path, sort_by_hash_path, sha256_iter
-from lib.file import get_tags
+from lib.flac import get_tags
 from lib.utils import make_filename, find_audio_files
 from lib.config import STAGE_ROOT
 
@@ -166,7 +166,7 @@ def main():
     elif args.command == "sort":
         lines = list(read(args.hashfile))
         sorted_lines = sort_by_path(lines)
-        outfile = make_filename("hash-sorted")
+        outfile = make_filename("hash-sort")
         for line in write(outfile, sorted_lines):
             print(line)
 
@@ -249,7 +249,7 @@ def main():
 
         for relpath in files:
             file = Path('.') / relpath
-            hashval = get_tags(file, "gen0-sha256")
+            hashval = get_tags(file, "MX-HASH")
             print(".", end="", flush=True)  # Fortschrittspunkt pro Datei
             if not hashval:
                 missing.append(relpath)
@@ -260,7 +260,7 @@ def main():
 
         if missing:
             print(
-                "[ERROR] Die folgenden Dateien haben keinen gültigen GEN0-SHA256-Tag:")
+                "[ERROR] Die folgenden Dateien haben keinen gültigen MX-HASH - Tag:")
             for relpath in missing:
                 print(f"  - {relpath}")
             print("\n[ABBRUCH] Vorgang wurde beendet. Keine Hash-Datei geschrieben.")
