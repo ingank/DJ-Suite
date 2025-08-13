@@ -58,7 +58,31 @@ def main() -> None:
         print(f"[audio encode] fertig: ok={stats['ok']}")
 
     elif args.command == "remux":
-        print("[remux] placeholder")
+        out_root = Path(config.STAGE_ROOT) / f"audio-remux-{get_timestamp()}"
+        out_root.mkdir(parents=True, exist_ok=True)
+
+        exts = {".flac"}
+        files = find_audio_files(
+            ".", absolute=True, depth=args.depth, filter_ext=exts)
+        if not files:
+            raise SystemExit("keine .flac-Dateien gefunden")
+
+        cwd = Path(".").resolve()
+        stats = {"ok": 0}
+
+        for src in files:
+            src_path = Path(src)
+            rel = src_path.resolve().relative_to(cwd)
+            print(f"[audio-remux] {rel}")
+
+            dst_rel = rel.with_suffix(".flac")
+            dst_path = out_root / dst_rel
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
+
+            flac.remux(src_path, dst_path, rel_source_path=str(rel))
+            stats["ok"] += 1
+
+        print(f"[remux] fertig: ok={stats['ok']}")
 
     elif args.command == "finalize":
         print("[finalize] placeholder")
