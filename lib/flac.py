@@ -233,12 +233,12 @@ def encode(
     if lra is not None:
         mx_tags["MX-LRA"] = f"{lra:.2f}"
     # Hash über Zielsignal (intermediate); Details kapselt lib.hash.sha256()
-    mx_tags["MX-HASH"] = hash_sha256(intermediate)
+    mx_tags["MX-HASH"] = hash_sha256(src_path)
     # Herkunft / Zeit
     mx_tags["MX-EXTENSION"] = source_suffix.lstrip(".").upper()
-    mx_tags["MX-STAGE_DATE"] = get_timestamp()
+    mx_tags["MX-STAGETIME"] = get_timestamp()
     if rel_source_path:
-        mx_tags["MX-SOURCE_PATH"] = rel_source_path
+        mx_tags["MX-ORIGINAL"] = rel_source_path
     if mx_tags:
         set_tags(intermediate, mx_tags, overwrite=True)
 
@@ -247,8 +247,6 @@ def encode(
     _run([
         "ffmpeg", "-v", "error",
         "-i", str(intermediate),
-        "-map_metadata", "0",
-        "-map", "0:a:0",
         "-c:a", "copy",
         "-y", str(out_path)
     ])
