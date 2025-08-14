@@ -170,129 +170,185 @@ def encode(
     out_path: Path,
     *,
     rel_source_path: Optional[str] = None,
-    force_reencode: bool = False,
+    force_reencode: bool = False,   # wird für FLAC ignoriert
+    # keine Tempfiles mehr hier; bleibt für API-Kompat.
     keep_temp: bool = False,
 ) -> dict:
     """
-    Archiv → Stage-FLAC (2 Stufen):
-      1) Zwischen-FLAC bauen (copy oder encode) + Cover einbetten + MX-Tags (inkl. LUFS/LRA/HASH)
-      2) Finaler Remux (copy) für stabile Block-/Padding-Struktur
-      3) touch_comment_tag() nur auf finaler Datei
+    Schlanke, blockweise Encode-Variante:
+      - FLAC→FLAC: IMMER Stream-Copy (kein Reencode), Cover vereinheitlichen (600x600 MJPEG, attached_pic)
+      - Nicht-FLAC: Reencode nach Policy aus config.KNOWN_* (lossy => s16 + shibata; lossless => flac, optional s24)
+      - Metadaten beibehalten (-map_metadata 0)
+      - MX-Tags NACH dem ffmpeg-Run auf out_path schreiben
+      - Danach COMMENT harmonisieren
     """
     src_path = Path(src_path)
     out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # temp-Arbeitsbereich
-    temp_root = Path(config.TEMP_ROOT) / f"flac-encode-{get_timestamp()}"
-    work_dir = temp_root / "work"
-    work_dir.mkdir(parents=True, exist_ok=True)
-
-    # 1) Probe
+    # 1) Probe & Erkennung
     info = _ffprobe_json(src_path)
     a = _first_audio_stream(info)
     if not a:
         raise RuntimeError("Kein Audiostream im Eingang gefunden.")
-    codec = (a.get("codec_name") or "").lower()
     sample_fmt = (a.get("sample_fmt") or "").lower()
-    source_suffix = src_path.suffix.lower()
-    is_src_flac = (source_suffix == ".flac")
-
-    # 2) Cover vorbereiten
     pic_index = _first_attached_pic_index(info)
-    cover_bytes, cover_mime = _extract_cover_png(src_path, work_dir, pic_index)
 
-    # 3) Zwischen-FLAC erzeugen (immer)
-    intermediate = work_dir / "audio.intermediate.flac"
-    if is_src_flac and not force_reencode and not _needs_downbit_to_s24(sample_fmt):
-        # FLAC → FLAC: reiner Remux (Audio-only), Metadaten übernehmen
-        _run([
-            "ffmpeg", "-v", "error",
-            "-i", str(src_path),
-            "-map_metadata", "0",
-            "-map", "0:a:0",
-            "-c:a", "copy",
-            "-vn", "-sn",
-            "-y", str(intermediate)
-        ])
+    source_suffix = src_path.suffix.lower()
+    is_flac = (source_suffix == ".flac")
+    is_lossy_ext = source_suffix in config.KNOWN_LOSSY_AUDIO_EXTENSIONS
+    is_lossless_ext = source_suffix in config.KNOWN_LOSSLESS_AUDIO_EXTENSIONS
+
+    # 2) ffmpeg-Aufruf (fallweise, ohne Command-Build)
+    cover_source = "original" if pic_index is not None else "placeholder"
+
+    if is_flac:
+        # FLAC → FLAC: NIE reencoden, force_reencode wird ignoriert
+        if pic_index is not None:
+            _run([
+                "ffmpeg", "-v", "error", "-i", str(src_path),
+                "-map_metadata", "0",
+                "-map", "0:a:0", "-map", f"0:{pic_index}",
+                "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
+                "-disposition:v:0", "attached_pic",
+                "-c:a", "copy", "-c:v", "mjpeg",
+                "-y", str(out_path)
+            ])
+        else:
+            placeholder = Path(config.EMPTY_COVER)
+            if not placeholder.exists():
+                raise RuntimeError(
+                    f"EMPTY_COVER nicht gefunden: {placeholder}")
+            _run([
+                "ffmpeg", "-v", "error", "-i", str(
+                    src_path), "-i", str(placeholder),
+                "-map_metadata", "0",
+                "-map", "0:a:0", "-map", "1:v:0",
+                "-disposition:v:0", "attached_pic",
+                "-c:a", "copy", "-c:v", "mjpeg",
+                "-y", str(out_path)
+            ])
         mode = "REMUX"
+
     else:
-        # Re-encode nach Policy
-        cmd = [
-            "ffmpeg", "-v", "error",
-            "-i", str(src_path),
-            "-map_metadata", "0",
-            "-map", "0:a:0",
-            "-vn", "-sn",
-            "-c:a", "flac",
-        ]
+        # Nicht-FLAC → Reencode nach Extension-Policy
+        if is_lossy_ext:
+            if pic_index is not None:
+                _run([
+                    "ffmpeg", "-v", "error", "-i", str(src_path),
+                    "-map_metadata", "0",
+                    "-map", "0:a:0", "-map", f"0:{pic_index}",
+                    "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
+                    "-disposition:v:0", "attached_pic",
+                    "-c:a", "flac", "-sample_fmt", "s16",
+                    "-af", "aresample=resampler=soxr:dither_method=shibata",
+                    "-c:v", "mjpeg",
+                    "-y", str(out_path)
+                ])
+            else:
+                placeholder = Path(config.EMPTY_COVER)
+                if not placeholder.exists():
+                    raise RuntimeError(
+                        f"EMPTY_COVER nicht gefunden: {placeholder}")
+                _run([
+                    "ffmpeg", "-v", "error", "-i", str(
+                        src_path), "-i", str(placeholder),
+                    "-map_metadata", "0",
+                    "-map", "0:a:0", "-map", "1:v:0",
+                    "-disposition:v:0", "attached_pic",
+                    "-c:a", "flac", "-sample_fmt", "s16",
+                    "-af", "aresample=resampler=soxr:dither_method=shibata",
+                    "-c:v", "mjpeg",
+                    "-y", str(out_path)
+                ])
+            mode = "REENC_LOSSY"
 
-        # Für ALLE lossy-Codecs: s16 + Shibata-Dither (SR unverändert)
-        if _source_is_lossy(codec):
-            cmd += ["-sample_fmt", "s16",
-                    "-af", "aresample=resampler=soxr:dither_method=shibata"]
+        else:
+            # lossless (oder unbekannt → konservativ als lossless behandeln)
+            # Optional s24, wenn Quell-sample_fmt float/dbl/s32
+            needs_s24 = _needs_downbit_to_s24(sample_fmt)
+            if pic_index is not None:
+                if needs_s24:
+                    _run([
+                        "ffmpeg", "-v", "error", "-i", str(src_path),
+                        "-map_metadata", "0",
+                        "-map", "0:a:0", "-map", f"0:{pic_index}",
+                        "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
+                        "-disposition:v:0", "attached_pic",
+                        "-c:a", "flac", "-sample_fmt", "s24",
+                        "-c:v", "mjpeg",
+                        "-y", str(out_path)
+                    ])
+                else:
+                    _run([
+                        "ffmpeg", "-v", "error", "-i", str(src_path),
+                        "-map_metadata", "0",
+                        "-map", "0:a:0", "-map", f"0:{pic_index}",
+                        "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
+                        "-disposition:v:0", "attached_pic",
+                        "-c:a", "flac",
+                        "-c:v", "mjpeg",
+                        "-y", str(out_path)
+                    ])
+            else:
+                placeholder = Path(config.EMPTY_COVER)
+                if not placeholder.exists():
+                    raise RuntimeError(
+                        f"EMPTY_COVER nicht gefunden: {placeholder}")
+                if needs_s24:
+                    _run([
+                        "ffmpeg", "-v", "error", "-i", str(
+                            src_path), "-i", str(placeholder),
+                        "-map_metadata", "0",
+                        "-map", "0:a:0", "-map", "1:v:0",
+                        "-disposition:v:0", "attached_pic",
+                        "-c:a", "flac", "-sample_fmt", "s24",
+                        "-c:v", "mjpeg",
+                        "-y", str(out_path)
+                    ])
+                else:
+                    _run([
+                        "ffmpeg", "-v", "error", "-i", str(
+                            src_path), "-i", str(placeholder),
+                        "-map_metadata", "0",
+                        "-map", "0:a:0", "-map", "1:v:0",
+                        "-disposition:v:0", "attached_pic",
+                        "-c:a", "flac",
+                        "-c:v", "mjpeg",
+                        "-y", str(out_path)
+                    ])
+            mode = "REENC_LOSSLESS"
 
-        # Sonst: nichts weiter setzen – FFmpeg wählt das sinnvolle Zielformat selbst
-        cmd += ["-y", str(intermediate)]
-        _run(cmd)
-        mode = "REENC"
-
-    # 3b) Cover in intermediate einbetten (genau 1 Front Cover)
-    fl = FLAC(str(intermediate))
-    fl.clear_pictures()
-    pic = Picture()
-    pic.data = cover_bytes
-    pic.mime = cover_mime
-    pic.type = 3  # Front Cover
-    pic.desc = "Front Cover"
-    fl.add_picture(pic)
-    fl.save()
-
-    # 4) Analyse am intermediate: LUFS/LRA + HASH
-    lufs, lra = loudness_measure(intermediate)
+    # 3) Analyse auf dem fertigen Output + MX-Tags setzen
+    lufs, lra = loudness_measure(out_path)
     mx_tags: Dict[str, Any] = {}
     if lufs is not None:
         mx_tags["MX-LUFS"] = f"{lufs:.2f}"
     if lra is not None:
         mx_tags["MX-LRA"] = f"{lra:.2f}"
-    # Hash über Originalsignal (src_path); Details kapselt lib.hash.sha256()
+    # Archiv→MX Signatur (bewusst Quelle)
     mx_tags["MX-HASH"] = hash_sha256(src_path)
-    # Herkunft / Zeit
-    mx_tags["MX-EXTENSION"] = source_suffix.lstrip(".").upper()
     mx_tags["MX-STAGETIME"] = get_timestamp()
     if rel_source_path:
         mx_tags["MX-ORIGINAL"] = rel_source_path
-    if mx_tags:
-        set_tags(intermediate, mx_tags, overwrite=True)
+    set_tags(out_path, mx_tags, overwrite=True)
 
-    # 5) Finaler Remux (immer) → stabile Blöcke/Padding
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    _run([
-        "ffmpeg", "-v", "error",
-        "-i", str(intermediate),
-        "-c:a", "copy",
-        "-y", str(out_path)
-    ])
-
-    # 6) Nur jetzt: COMMENT-Tag harmonisieren
+    # 4) COMMENT harmonisieren
     touch_comment_tag(out_path)
-
-    # 7) Cleanup
-    result_note = "" if pic_index is not None else "Kein Original-Cover, Platzhalter verwendet."
-    if not keep_temp:
-        shutil.rmtree(temp_root, ignore_errors=True)
 
     return {
         "out_path": str(out_path),
         "actions": {
             "source_format": source_suffix.lstrip("."),
             "mode": mode,
-            "tags_copied": True,
-            "cover_added": "original" if pic_index is not None else "placeholder",
-            "intermediate_tags": list(mx_tags.keys()),
-            "final_remux": True,
+            "audio_copy": (mode == "REMUX"),
+            "cover_source": cover_source,
+            "cover_size": "600x600",
+            "cover_codec": "mjpeg",
+            "metadata_copied": True,
             "comment_touched": True,
         },
-        "notes": result_note,
+        "notes": ("force_reencode ignored for FLAC" if is_flac and force_reencode else ""),
     }
 
 
