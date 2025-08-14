@@ -350,6 +350,7 @@ def remux(
             "-map_metadata", "0",
             "-map", "0:a:0",
             "-map", "1:v:0",
+            "-vf", "scale=600:600",
             "-disposition:v:0", "attached_pic",
             "-c:a", "copy",
             "-c:v", "mjpeg",
