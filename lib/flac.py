@@ -63,14 +63,38 @@ def _run(cmd: list[str]) -> None:
 
 
 def _ffprobe_json(path: Path) -> dict:
+    """
+    Führt ffprobe aus und gibt das Ergebnis als dict zurück.
+    - JSON wird vollständig im RAM gehalten (stdout=PIPE).
+    - stderr bleibt getrennt, um das JSON nicht zu verunreinigen.
+    - Harte Fehlerbehandlung: non-zero returncode -> RuntimeError.
+    """
     cmd = [
-        "ffprobe", "-v", "error",
+        "ffprobe",
+        "-v", "error",          # nur echte Fehler
+        "-hide_banner",         # kein Banner/Versionstext
         "-print_format", "json",
-        "-show_format", "-show_streams",
-        str(path)
+        "-show_format",
+        "-show_streams",
+        str(path),
     ]
-    out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
-    return json.loads(out)
+
+    proc = subprocess.run(
+        cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"ffprobe failed ({proc.returncode}) for {path}\n{proc.stderr}"
+        )
+
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        preview = (proc.stdout or "")[:500]
+        raise RuntimeError(
+            f"ffprobe JSON parse error: {e} for {path}\n"
+            f"STDERR: {proc.stderr}\n"
+            f"STDOUT preview (first 500B): {preview}"
+        )
 
 
 def _first_audio_stream(info: dict) -> Optional[dict]:
@@ -277,17 +301,85 @@ def remux(
     out_path: Path,
     *,
     rel_source_path: Optional[str] = None,
-    keep_temp: bool = False,
+    keep_temp: bool = False,  # nur für Signatur-Konsistenz; wird hier nicht genutzt
 ) -> dict:
     """
-    FLAC → FLAC, reiner Stream-Copy (kein Reencode), keine MX-Tags.
-    Bilder/Tags sollen 1:1 erhalten bleiben. Danach COMMENT harmonisieren.
-    Rückgabe analog zu encode(), aber ohne MX-Felder.
+    FLAC → FLAC, leichtgewichtig:
+      - Audio: Stream-Copy (kein Reencode)
+      - Cover: genau 1 Bild, quadratisch, 600x600, als MJPEG attached_pic
+      - Metadaten: von Quelle übernehmen
+      - Danach: touch_comment_tag()
+
+    Pfadwahl:
+      1) Wenn Quelle bereits ein Bild hat:
+         ffmpeg -i input.flac -map 0:a:0 -map 0:v:<idx> -vf "crop(...),scale=600:600" -c:a copy -c:v mjpeg -disposition:v:0 attached_pic output.flac
+      2) Sonst:
+         ffmpeg -i input.flac -i EMPTY_COVER -map 0:a:0 -map 1:v:0 -c:a copy -c:v mjpeg -disposition:v:0 attached_pic output.flac
     """
-    # 1) Probe: info = _ffprobe_json(src_path); erster Audiostream muss codec_name == "flac" haben, sonst Abbruch
-    # 2) Remux: _run(["ffmpeg","-v","error","-i", str(src_path), "-c:a","copy","-y", str(out_path)])
-    #    (keine -map-Optionen setzen; so wie in encode’s finalem Schritt, damit Cover/Tags erhalten bleiben)
-    # 3) touch_comment_tag(out_path)
-    # 4) optional: Cleanup temp (falls überhaupt verwendet)
-    # 5) return {"out_path": str(out_path), "actions": {"mode":"REMUX","tags_copied":True,"cover_preserved":True}}
-    raise NotImplementedError
+    src_path = Path(src_path)
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 0) Validierung: Quelle muss FLAC mit Audio-Stream sein
+    info = _ffprobe_json(src_path)
+    a = _first_audio_stream(info)
+    if not a:
+        raise RuntimeError("Kein Audiostream im Eingang gefunden.")
+    codec = (a.get("codec_name") or "").lower()
+    if codec != "flac":
+        raise RuntimeError(
+            "Quelle ist kein FLAC – remux() erwartet FLAC→FLAC.")
+
+    # 1) Cover-Erkennung (attached_pic vorhanden?)
+    pic_index = _first_attached_pic_index(info)
+
+    if pic_index is not None:
+        # Pfad 1: vorhandenes Cover croppen + auf 600x600 skalieren und als attached_pic einbetten
+        _run([
+            "ffmpeg", "-v", "error",
+            "-i", str(src_path),
+            "-map_metadata", "0",
+            "-map", "0:a:0",
+            "-map", f"0:{pic_index}",
+            "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
+            "-disposition:v:0", "attached_pic",
+            "-c:a", "copy",
+            "-c:v", "mjpeg",
+            "-y", str(out_path)
+        ])
+        cover_source = "original"
+    else:
+        # Pfad 2: Platzhalter einbetten
+        placeholder = Path(config.EMPTY_COVER)
+        if not placeholder.exists():
+            raise RuntimeError(f"EMPTY_COVER nicht gefunden: {placeholder}")
+        _run([
+            "ffmpeg", "-v", "error",
+            "-i", str(src_path),
+            "-i", str(placeholder),
+            "-map_metadata", "0",
+            "-map", "0:a:0",
+            "-map", "1:v:0",
+            "-disposition:v:0", "attached_pic",
+            "-c:a", "copy",
+            "-c:v", "mjpeg",
+            "-y", str(out_path)
+        ])
+        cover_source = "placeholder"
+
+    # 3) COMMENT-Tag harmonisieren
+    touch_comment_tag(out_path)
+
+    return {
+        "out_path": str(out_path),
+        "actions": {
+            "mode": "REMUX",
+            "audio_copy": True,
+            "cover_source": cover_source,
+            "cover_size": "600x600",
+            "cover_codec": "mjpeg",
+            "metadata_copied": True,
+            "comment_touched": True,
+        },
+        "notes": "" if pic_index is not None else "Kein Original-Cover → Platzhalter verwendet.",
+    }
