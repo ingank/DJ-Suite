@@ -113,58 +113,6 @@ def _first_attached_pic_index(info: dict) -> Optional[int]:
     return None
 
 
-def _source_is_lossy(codec: str) -> bool:
-    # konservative Heuristik (ffprobe codec_name)
-    lossy = {
-        "mp3", "aac", "ac3", "eac3", "dts", "vorbis", "opus",
-        "wma", "wmapro", "wmavoice", "nellymoser", "atrac1", "atrac3", "atrac3plus", "twinvq", "qdm2", "qdmc", "sbc"
-    }
-    return codec.lower() in lossy
-
-
-def _source_is_lossless(codec: str) -> bool:
-    lossless = {
-        "flac", "alac", "wavpack", "tta", "tak", "shorten", "mlp", "truehd",
-        # pcm_* gilt als lossless, eigene Behandlung über sample_fmt
-    }
-    c = codec.lower()
-    return c in lossless or c.startswith("pcm_")
-
-
-def _needs_downbit_to_s24(sample_fmt: Optional[str]) -> bool:
-    if not sample_fmt:
-        return False
-    f = sample_fmt.lower()
-    # float/double & 32-bit int → auf 24-bit int runter
-    return f.startswith("flt") or f.startswith("dbl") or f.startswith("s32")
-
-# ---------- Cover-Extraktion (PNG ≤1024) via ffmpeg ----------
-
-
-def _extract_cover_png(src_path: Path, work_dir: Path, pic_index: Optional[int]) -> Tuple[bytes, str]:
-    out_png = work_dir / "cover.png"
-    if pic_index is not None:
-        # skaliert IMMER down auf <=1024 (force_original_aspect_ratio=decrease), kein Upscale
-        _run([
-            "ffmpeg", "-v", "error",
-            "-i", str(src_path),
-            "-map", f"0:{pic_index}",
-            "-frames:v", "1",
-            "-vf", "scale='min(iw,1024)':'min(ih,1024)':force_original_aspect_ratio=decrease",
-            "-an", "-map_metadata", "-1",
-            "-y", str(out_png)
-        ])
-        return out_png.read_bytes(), "image/png"
-    # Platzhalter
-    empty = Path(config.EMPTY_COVER)
-    if not empty.exists():
-        raise RuntimeError(f"EMPTY_COVER nicht gefunden: {empty}")
-    # optional: auch hier Downsizing via ffmpeg (konsequent), aber meist unnötig
-    return empty.read_bytes(), "image/png"
-
-# ---------- Hauptfunktion: 2-Stufen-Build ----------
-
-
 def encode(
     src_path: Path,
     out_path: Path,
@@ -212,7 +160,7 @@ def encode(
                 "ffmpeg", "-v", "error", "-i", str(src_path),
                 "-map_metadata", "0",
                 "-map", "0:a:0", "-map", f"0:{pic_index}",
-                "-vf", "crop=min(iw,ih):min(iw,ih):(iw-min(iw,ih))/2:(ih-min(iw,ih))/2,scale=600:600",
+                "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
                 "-disposition:v:0", "attached_pic",
                 "-c:a", "copy", "-c:v", "mjpeg",
                 "-y", str(out_path)
@@ -244,7 +192,7 @@ def encode(
                     "ffmpeg", "-v", "error", "-i", str(src_path),
                     "-map_metadata", "0",
                     "-map", "0:a:0", "-map", f"0:{pic_index}",
-                    "-vf", "crop=min(iw,ih):min(iw,ih):(iw-min(iw,ih))/2:(ih-min(iw,ih))/2,scale=600:600",
+                    "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
                     "-disposition:v:0", "attached_pic",
                     "-c:a", "flac", "-sample_fmt", "s16",
                     "-af", "aresample=resampler=soxr:dither_method=shibata",
@@ -279,7 +227,7 @@ def encode(
                     "ffmpeg", "-v", "error", "-i", str(src_path),
                     "-map_metadata", "0",
                     "-map", "0:a:0", "-map", f"0:{pic_index}",
-                    "-vf", "crop=min(iw,ih):min(iw,ih):(iw-min(iw,ih))/2:(ih-min(iw,ih))/2,scale=600:600",
+                    "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
                     "-disposition:v:0", "attached_pic",
                     "-c:a", "flac",
                     "-c:v", "mjpeg",
