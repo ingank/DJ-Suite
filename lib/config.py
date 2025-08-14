@@ -55,16 +55,17 @@ BAG_LUFS = float(cfg.get("bag_lufs", -21.0))
 PRIMARY_AUDIO_EXTENSIONS = [".mp3", ".flac", ".wav", ".aiff", ".aifc"]
 
 # Bekannte Audio-/Multimedia-Formate (enger kuratiert):
-KNOWN_LOSSY_AUDIO_EXTENSIONS = sorted(set([
+KNOWN_LOSSY_AUDIO_EXTENSIONS = {
     ".aac", ".ac3", ".amr", ".dts", ".eac3", ".g722", ".g726", ".gsm",
     ".mp2", ".mp3", ".mpa", ".mpc", ".opus", ".qcp", ".voc", ".wma"
-]))
+}
 
-KNOWN_LOSSLESS_AUDIO_EXTENSIONS = sorted(set([
+KNOWN_LOSSLESS_AUDIO_EXTENSIONS = {
     ".aif", ".aiff", ".alac", ".ape", ".flac", ".mlp", ".thd", ".tak",
     ".tta", ".wav", ".w64"
-]))
+}
 
+# Gesamtliste aller bekannten Audio-Formate, alphabetisch sortiert
 KNOWN_AUDIO_EXTENSIONS = sorted(
     KNOWN_LOSSY_AUDIO_EXTENSIONS | KNOWN_LOSSLESS_AUDIO_EXTENSIONS
 )
