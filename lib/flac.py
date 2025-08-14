@@ -331,7 +331,7 @@ def remux(
             "-map_metadata", "0",
             "-map", "0:a:0",
             "-map", f"0:{pic_index}",
-            "-vf", "crop=min(iw,ih):min(iw,ih):(iw-min(iw,ih))/2:(ih-min(iw,ih))/2,scale=600:600",
+            "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
             "-disposition:v:0", "attached_pic",
             "-c:a", "copy",
             "-c:v", "mjpeg",
