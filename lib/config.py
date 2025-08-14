@@ -55,16 +55,20 @@ BAG_LUFS = float(cfg.get("bag_lufs", -21.0))
 PRIMARY_AUDIO_EXTENSIONS = [".mp3", ".flac", ".wav", ".aiff", ".aifc"]
 
 # Bekannte Audio-/Multimedia-Formate (enger kuratiert):
-#   Diese Liste wurde aus ffmpeg-Ausgaben (`-demuxers` und `-decoders`) abgeleitet
-#   und enthält nur Container-/Rohformate, die Audio enthalten können und deren
-#   Audiostreams ffmpeg demuxen + decodieren kann. Stand: August 2025.
-KNOWN_AUDIO_EXTENSIONS = sorted(set([
-    ".3g2", ".3gp", ".aac", ".ac3", ".aif", ".aifc", ".aiff", ".alac", ".amr",
-    ".ape", ".asf", ".au", ".caf", ".dts", ".eac3", ".flac", ".g722", ".g726",
-    ".gsm", ".m4a", ".m4b", ".mka", ".mkv", ".mlp", ".mov", ".mp2", ".mp3",
-    ".mpa", ".mpc", ".mp4", ".oga", ".ogg", ".oma", ".opus", ".qcp", ".tak",
-    ".thd", ".tta", ".voc", ".wav", ".w64", ".wma", ".wv"
+KNOWN_LOSSY_AUDIO_EXTENSIONS = sorted(set([
+    ".aac", ".ac3", ".amr", ".dts", ".eac3", ".g722", ".g726", ".gsm",
+    ".mp2", ".mp3", ".mpa", ".mpc", ".opus", ".qcp", ".voc", ".wma"
 ]))
+
+KNOWN_LOSSLESS_AUDIO_EXTENSIONS = sorted(set([
+    ".aif", ".aiff", ".alac", ".ape", ".flac", ".mlp", ".thd", ".tak",
+    ".tta", ".wav", ".w64"
+]))
+
+KNOWN_AUDIO_EXTENSIONS = sorted(
+    KNOWN_LOSSY_AUDIO_EXTENSIONS | KNOWN_LOSSLESS_AUDIO_EXTENSIONS
+)
+
 
 # Rückwärtskompatible Alias-Namen (damit bestehender Code weiter läuft)
 AUDIO_EXTENSIONS = PRIMARY_AUDIO_EXTENSIONS
