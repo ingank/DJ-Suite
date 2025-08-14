@@ -171,13 +171,12 @@ def encode(
     *,
     rel_source_path: Optional[str] = None,
     force_reencode: bool = False,   # wird für FLAC ignoriert
-    # keine Tempfiles mehr hier; bleibt für API-Kompat.
-    keep_temp: bool = False,
+    keep_temp: bool = False,        # keine Tempfiles mehr; nur für API-Kompat.
 ) -> dict:
     """
-    Schlanke, blockweise Encode-Variante:
+    Blockweise Encode-Variante:
       - FLAC→FLAC: IMMER Stream-Copy (kein Reencode), Cover vereinheitlichen (600x600 MJPEG, attached_pic)
-      - Nicht-FLAC: Reencode nach Policy aus config.KNOWN_* (lossy => s16 + shibata; lossless => flac, optional s24)
+      - Nicht-FLAC: Reencode nach Policy aus config.KNOWN_* (lossy => s16 + shibata; lossless => flac)
       - Metadaten beibehalten (-map_metadata 0)
       - MX-Tags NACH dem ffmpeg-Run auf out_path schreiben
       - Danach COMMENT harmonisieren
@@ -191,25 +190,29 @@ def encode(
     a = _first_audio_stream(info)
     if not a:
         raise RuntimeError("Kein Audiostream im Eingang gefunden.")
-    sample_fmt = (a.get("sample_fmt") or "").lower()
     pic_index = _first_attached_pic_index(info)
 
     source_suffix = src_path.suffix.lower()
     is_flac = (source_suffix == ".flac")
     is_lossy_ext = source_suffix in config.KNOWN_LOSSY_AUDIO_EXTENSIONS
-    is_lossless_ext = source_suffix in config.KNOWN_LOSSLESS_AUDIO_EXTENSIONS
 
     # 2) ffmpeg-Aufruf (fallweise, ohne Command-Build)
     cover_source = "original" if pic_index is not None else "placeholder"
+    ffmpeg_block = ""
+    note = ""
 
     if is_flac:
         # FLAC → FLAC: NIE reencoden, force_reencode wird ignoriert
+        if force_reencode:
+            note = "force_reencode ignored for FLAC"
+
         if pic_index is not None:
+            ffmpeg_block = "FLAC_REMUX_ORIG_COVER"
             _run([
                 "ffmpeg", "-v", "error", "-i", str(src_path),
                 "-map_metadata", "0",
                 "-map", "0:a:0", "-map", f"0:{pic_index}",
-                "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
+                "-vf", "crop=min(iw,ih):min(iw,ih):(iw-min(iw,ih))/2:(ih-min(iw,ih))/2,scale=600:600",
                 "-disposition:v:0", "attached_pic",
                 "-c:a", "copy", "-c:v", "mjpeg",
                 "-y", str(out_path)
@@ -219,11 +222,13 @@ def encode(
             if not placeholder.exists():
                 raise RuntimeError(
                     f"EMPTY_COVER nicht gefunden: {placeholder}")
+            ffmpeg_block = "FLAC_REMUX_PLACEHOLDER"
             _run([
-                "ffmpeg", "-v", "error", "-i", str(
-                    src_path), "-i", str(placeholder),
+                "ffmpeg", "-v", "error",
+                "-i", str(src_path), "-i", str(placeholder),
                 "-map_metadata", "0",
                 "-map", "0:a:0", "-map", "1:v:0",
+                "-vf", "scale=600:600",
                 "-disposition:v:0", "attached_pic",
                 "-c:a", "copy", "-c:v", "mjpeg",
                 "-y", str(out_path)
@@ -234,11 +239,12 @@ def encode(
         # Nicht-FLAC → Reencode nach Extension-Policy
         if is_lossy_ext:
             if pic_index is not None:
+                ffmpeg_block = "REENC_LOSSY_ORIG_COVER"
                 _run([
                     "ffmpeg", "-v", "error", "-i", str(src_path),
                     "-map_metadata", "0",
                     "-map", "0:a:0", "-map", f"0:{pic_index}",
-                    "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
+                    "-vf", "crop=min(iw,ih):min(iw,ih):(iw-min(iw,ih))/2:(ih-min(iw,ih))/2,scale=600:600",
                     "-disposition:v:0", "attached_pic",
                     "-c:a", "flac", "-sample_fmt", "s16",
                     "-af", "aresample=resampler=soxr:dither_method=shibata",
@@ -250,11 +256,13 @@ def encode(
                 if not placeholder.exists():
                     raise RuntimeError(
                         f"EMPTY_COVER nicht gefunden: {placeholder}")
+                ffmpeg_block = "REENC_LOSSY_PLACEHOLDER"
                 _run([
-                    "ffmpeg", "-v", "error", "-i", str(
-                        src_path), "-i", str(placeholder),
+                    "ffmpeg", "-v", "error",
+                    "-i", str(src_path), "-i", str(placeholder),
                     "-map_metadata", "0",
                     "-map", "0:a:0", "-map", "1:v:0",
+                    "-vf", "scale=600:600",
                     "-disposition:v:0", "attached_pic",
                     "-c:a", "flac", "-sample_fmt", "s16",
                     "-af", "aresample=resampler=soxr:dither_method=shibata",
@@ -265,58 +273,35 @@ def encode(
 
         else:
             # lossless (oder unbekannt → konservativ als lossless behandeln)
-            # Optional s24, wenn Quell-sample_fmt float/dbl/s32
-            needs_s24 = _needs_downbit_to_s24(sample_fmt)
             if pic_index is not None:
-                if needs_s24:
-                    _run([
-                        "ffmpeg", "-v", "error", "-i", str(src_path),
-                        "-map_metadata", "0",
-                        "-map", "0:a:0", "-map", f"0:{pic_index}",
-                        "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
-                        "-disposition:v:0", "attached_pic",
-                        "-c:a", "flac", "-sample_fmt", "s24",
-                        "-c:v", "mjpeg",
-                        "-y", str(out_path)
-                    ])
-                else:
-                    _run([
-                        "ffmpeg", "-v", "error", "-i", str(src_path),
-                        "-map_metadata", "0",
-                        "-map", "0:a:0", "-map", f"0:{pic_index}",
-                        "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
-                        "-disposition:v:0", "attached_pic",
-                        "-c:a", "flac",
-                        "-c:v", "mjpeg",
-                        "-y", str(out_path)
-                    ])
+                ffmpeg_block = "REENC_LOSSLESS_ORIG_COVER"
+                _run([
+                    "ffmpeg", "-v", "error", "-i", str(src_path),
+                    "-map_metadata", "0",
+                    "-map", "0:a:0", "-map", f"0:{pic_index}",
+                    "-vf", "crop=min(iw,ih):min(iw,ih):(iw-min(iw,ih))/2:(ih-min(iw,ih))/2,scale=600:600",
+                    "-disposition:v:0", "attached_pic",
+                    "-c:a", "flac",
+                    "-c:v", "mjpeg",
+                    "-y", str(out_path)
+                ])
             else:
                 placeholder = Path(config.EMPTY_COVER)
                 if not placeholder.exists():
                     raise RuntimeError(
                         f"EMPTY_COVER nicht gefunden: {placeholder}")
-                if needs_s24:
-                    _run([
-                        "ffmpeg", "-v", "error", "-i", str(
-                            src_path), "-i", str(placeholder),
-                        "-map_metadata", "0",
-                        "-map", "0:a:0", "-map", "1:v:0",
-                        "-disposition:v:0", "attached_pic",
-                        "-c:a", "flac", "-sample_fmt", "s24",
-                        "-c:v", "mjpeg",
-                        "-y", str(out_path)
-                    ])
-                else:
-                    _run([
-                        "ffmpeg", "-v", "error", "-i", str(
-                            src_path), "-i", str(placeholder),
-                        "-map_metadata", "0",
-                        "-map", "0:a:0", "-map", "1:v:0",
-                        "-disposition:v:0", "attached_pic",
-                        "-c:a", "flac",
-                        "-c:v", "mjpeg",
-                        "-y", str(out_path)
-                    ])
+                ffmpeg_block = "REENC_LOSSLESS_PLACEHOLDER"
+                _run([
+                    "ffmpeg", "-v", "error",
+                    "-i", str(src_path), "-i", str(placeholder),
+                    "-map_metadata", "0",
+                    "-map", "0:a:0", "-map", "1:v:0",
+                    "-vf", "scale=600:600",
+                    "-disposition:v:0", "attached_pic",
+                    "-c:a", "flac",
+                    "-c:v", "mjpeg",
+                    "-y", str(out_path)
+                ])
             mode = "REENC_LOSSLESS"
 
     # 3) Analyse auf dem fertigen Output + MX-Tags setzen
@@ -341,6 +326,7 @@ def encode(
         "actions": {
             "source_format": source_suffix.lstrip("."),
             "mode": mode,
+            "ffmpeg_block": ffmpeg_block,
             "audio_copy": (mode == "REMUX"),
             "cover_source": cover_source,
             "cover_size": "600x600",
@@ -348,7 +334,7 @@ def encode(
             "metadata_copied": True,
             "comment_touched": True,
         },
-        "notes": ("force_reencode ignored for FLAC" if is_flac and force_reencode else ""),
+        "notes": note,
     }
 
 
@@ -397,7 +383,7 @@ def remux(
             "-map_metadata", "0",
             "-map", "0:a:0",
             "-map", f"0:{pic_index}",
-            "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
+            "-vf", "crop=min(iw,ih):min(iw,ih):(iw-min(iw,ih))/2:(ih-min(iw,ih))/2,scale=600:600",
             "-disposition:v:0", "attached_pic",
             "-c:a", "copy",
             "-c:v", "mjpeg",
