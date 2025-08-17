@@ -239,6 +239,8 @@ def main():
             print(line)
 
     elif args.command == "read":
+        import time
+
         files = find_audio_files(".", absolute=False, filter_ext=[".flac"])
         if not files:
             print("[INFO] Keine Audiodateien gefunden.")
@@ -248,19 +250,22 @@ def main():
         results = []
 
         for relpath in files:
-            file = Path('.') / relpath
+            file = Path(".") / relpath
+            t0 = time.perf_counter()
             hashval = get_tags(file, "MX-HASH")
-            print(".", end="", flush=True)  # Fortschrittspunkt pro Datei
+            dt = time.perf_counter() - t0
+
+            # gewünschte Ausgabe pro Datei
+            print(f"[hash read] {dt:.4f}s {relpath}")
+
             if not hashval:
                 missing.append(relpath)
             else:
                 results.append((hashval, relpath.as_posix()))
 
-        print()
-
         if missing:
             print(
-                "[ERROR] Die folgenden Dateien haben keinen gültigen MX-HASH - Tag:")
+                "\n[ERROR] Die folgenden Dateien haben keinen gültigen MX-HASH - Tag:")
             for relpath in missing:
                 print(f"  - {relpath}")
             print("\n[ABBRUCH] Vorgang wurde beendet. Keine Hash-Datei geschrieben.")

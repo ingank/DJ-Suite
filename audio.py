@@ -2,6 +2,7 @@
 """audio.py – Zentrale Audiooperationen (Endformat: FLAC, Quelle: ".")"""
 
 import argparse
+import sys
 from pathlib import Path
 from lib import flac, config
 from lib.utils import get_timestamp, find_audio_files
@@ -84,8 +85,79 @@ def main() -> None:
 
         print(f"[remux] fertig: ok={stats['ok']}")
 
+    # audio.py (Ausschnitt im CLI-Handler)
+
     elif args.command == "finalize":
-        print("[finalize] placeholder")
+        """
+        finalize:
+        - Ziel: FLAC 24-bit / 44.1 kHz, Dateiname <MX-HASH>.flac
+        - Preflight: prüft, ob alle Eingangsdateien MX-HASH und MX-LUFS besitzen
+                    und ob keine Hash-Dubletten vorkommen.
+        - Bei Erfolg: ruft lib.flac.finalize() für jede Datei auf
+        - Output: STAGE_ROOT/audio-finalize-<timestamp>
+        """
+        from lib import config, utils, flac
+
+        files = utils.find_audio_files(".", filter_ext=[".flac"])
+
+        if not files:
+            print("[finalize] keine FLAC-Dateien gefunden")
+            sys.exit(1)
+
+        # Preflight
+        print(f"[finalize] Preflight-Check für {len(files)} Dateien ...")
+
+        lufs_map = {}
+        hash_map = {}
+
+        for f in files:
+            tags = flac.get_tags(f, ["MX-LUFS", "MX-HASH"])
+            mx_lufs = tags.get("MX-LUFS")
+            mx_hash = tags.get("MX-HASH")
+
+            if not mx_lufs:
+                raise RuntimeError(f"MX-LUFS fehlt in: {f}")
+            if not mx_hash:
+                raise RuntimeError(f"MX-HASH fehlt in: {f}")
+
+            try:
+                float(mx_lufs)
+            except Exception:
+                raise RuntimeError(
+                    f"MX-LUFS ungültig in: {f} (wert={mx_lufs})")
+
+            if mx_hash in hash_map:
+                raise RuntimeError(
+                    f"Doppelter MX-HASH {mx_hash} in {f} und {hash_map[mx_hash]}"
+                )
+
+            lufs_map[f] = float(mx_lufs)
+            hash_map[mx_hash] = f
+
+        # Zielordner erzeugen
+        out_root = Path(config.STAGE_ROOT) / \
+            f"audio-finalize-{utils.get_timestamp()}"
+        out_root.mkdir(parents=True, exist_ok=True)
+        print(f"[finalize] Output-Ordner: {out_root}")
+
+        # Verarbeitung
+        for f in files:
+            mx_hash = flac.get_tags(f, ["MX-HASH"])["MX-HASH"].strip()
+            out_path = out_root / f"{mx_hash}.flac"
+
+            print(f"[finalize] {f} → {out_path}")
+            info = flac.finalize(src_path=f, out_path=out_path)
+
+            # Laufzeit-Feedback
+            gain_db = info["actions"]["gain_db"]
+            print(
+                f"  [ok] mode={info['actions']['mode']}, "
+                f"gain={gain_db:+.2f} dB, "
+                f"rate={info['actions']['target_rate_hz']} Hz, "
+                f"bits={info['actions']['target_bits_per_sample']}"
+            )
+
+        print("[finalize] abgeschlossen.")
 
 
 if __name__ == "__main__":
