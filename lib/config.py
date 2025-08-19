@@ -62,7 +62,7 @@ KNOWN_LOSSY_AUDIO_EXTENSIONS = {
 
 KNOWN_LOSSLESS_AUDIO_EXTENSIONS = {
     ".aif", ".aiff", ".alac", ".ape", ".flac", ".mlp", ".thd", ".tak",
-    ".tta", ".wav", ".w64"
+    ".tta", ".wav", ".w64", ".aifc"
 }
 
 # Gesamtliste aller bekannten Audio-Formate, alphabetisch sortiert

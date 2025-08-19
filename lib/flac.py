@@ -65,6 +65,7 @@ def _ffprobe_json(path: Path) -> dict:
     Führt ffprobe aus und gibt das Ergebnis als dict zurück.
     - JSON wird vollständig im RAM gehalten (stdout=PIPE).
     - stderr bleibt getrennt, um das JSON nicht zu verunreinigen.
+    - Manuelles Decoding von stdout/stderr (UTF-8, robust).
     - Harte Fehlerbehandlung: non-zero returncode -> RuntimeError.
     """
     cmd = [
@@ -78,19 +79,28 @@ def _ffprobe_json(path: Path) -> dict:
     ]
 
     proc = subprocess.run(
-        cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False  # -> stdout/stderr als Bytes
+    )
+
+    # Manuelles Decoding: mehr Kontrolle
+    stdout_str = proc.stdout.decode("utf-8", errors="replace")
+    stderr_str = proc.stderr.decode("utf-8", errors="replace")
+
     if proc.returncode != 0:
         raise RuntimeError(
-            f"ffprobe failed ({proc.returncode}) for {path}\n{proc.stderr}"
+            f"ffprobe failed ({proc.returncode}) for {path}\n{stderr_str}"
         )
 
     try:
-        return json.loads(proc.stdout)
+        return json.loads(stdout_str)
     except json.JSONDecodeError as e:
-        preview = (proc.stdout or "")[:500]
+        preview = stdout_str[:500]
         raise RuntimeError(
             f"ffprobe JSON parse error: {e} for {path}\n"
-            f"STDERR: {proc.stderr}\n"
+            f"STDERR: {stderr_str}\n"
             f"STDOUT preview (first 500B): {preview}"
         )
 
@@ -256,14 +266,17 @@ def encode(
     ts = get_timestamp()
     hash = hash_sha256(src_path)
     lufs, lra = loudness_measure(out_path)
+    source_suffix = src_path.suffix.lower().lstrip(".")
 
     mx_tags: Dict[str, Any] = {}
     mx_tags["MX-HASH"] = hash
+    mx_tags["MX-PATH"] = rel_source_path
+    mx_tags["MX-EXT"] = source_suffix
+    mx_tags["MX-DATE"] = ts
     mx_tags["MX-LUFS"] = f"{lufs:.1f}"
     mx_tags["MX-LRA"] = f"{lra:.1f}"
-    mx_tags["MX-DATE"] = ts
     mx_tags["MX-BLOCK"] = ffmpeg_block
-    mx_tags["MX-ORIG"] = rel_source_path
+
     set_tags(out_path, mx_tags, overwrite=True)
 
     # 4) COMMENT harmonisieren

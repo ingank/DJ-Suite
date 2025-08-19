@@ -23,8 +23,12 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("encode", help="bekanntes Format → FLAC (Archiv→Stage)")
     sub.add_parser("remux", help="FLAC → FLAC (Blocklayout fix)")
-    sub.add_parser(
-        "finalize", help="FLAC → FLAC 24bit/44.1kHz (Workspace→Bag)")
+    sub.add_parser("finalize",
+                   help="FLAC → FLAC 24bit/44.1kHz (Workspace→Bag)")
+    sub.add_parser("tagexport",
+                   help="Exportiert alle Text-Tags aus .flac-Dateien"
+                   "rekursiv ab aktuellem Verzeichnis "
+                   "in eine NDJSON-Datei (audio-tagexport-<timestamp>.ndjson).")
 
     args = parser.parse_args()
 
@@ -96,9 +100,8 @@ def main() -> None:
         - Bei Erfolg: ruft lib.flac.finalize() für jede Datei auf
         - Output: STAGE_ROOT/audio-finalize-<timestamp>
         """
-        from lib import config, utils, flac
 
-        files = utils.find_audio_files(".", filter_ext=[".flac"])
+        files = find_audio_files(".", filter_ext=[".flac"])
 
         if not files:
             print("[finalize] keine FLAC-Dateien gefunden")
@@ -136,7 +139,7 @@ def main() -> None:
 
         # Zielordner erzeugen
         out_root = Path(config.STAGE_ROOT) / \
-            f"audio-finalize-{utils.get_timestamp()}"
+            f"audio-finalize-{get_timestamp()}"
         out_root.mkdir(parents=True, exist_ok=True)
         print(f"[finalize] Output-Ordner: {out_root}")
 
@@ -158,6 +161,60 @@ def main() -> None:
             )
 
         print("[finalize] abgeschlossen.")
+
+    elif args.command == "tagexport":
+        import json
+        from mutagen.flac import FLAC
+
+        # 1) Zieldatei vorbereiten
+        out_path = Path(f"./audio-tagexport-{get_timestamp()}.ndjson")
+        print(f"[tagexport] schreibe nach {out_path}")
+
+        # 2) FLAC-Dateien rekursiv (relativ) sammeln
+        files = find_audio_files(".", absolute=False, filter_ext=[".flac"])
+        if not files:
+            print("[tagexport] keine .flac-Dateien gefunden")
+            raise SystemExit(0)
+
+        written = 0
+        skipped = 0
+
+        with out_path.open("w", encoding="utf-8", newline="\n") as out_f:
+            for rel in files:
+                rel_path = Path(rel)
+                try:
+                    # 3) Tags via mutagen lesen (roh, ohne eigenes Wrapper-API)
+                    audio = FLAC(str(rel_path))
+                    # mutagen liefert dict(tag -> list[str]); wir normalisieren Keys auf lowercase
+                    # und erzwingen List[str]-Werte
+                    raw = dict(audio)
+                    tags = {}
+                    for k, v in raw.items():
+                        key = str(k).lower()
+                        if isinstance(v, (list, tuple)):
+                            vals = [str(x) for x in v if x is not None]
+                        elif v is None:
+                            vals = []
+                        else:
+                            vals = [str(v)]
+                        tags[key] = vals
+
+                    # 4) NDJSON-Zeile schreiben
+                    rec = {"path": rel_path.as_posix(), "tags": tags}
+                    out_f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    written += 1
+
+                    # optional: leichtes Laufzeitfeedback
+                    if written % 100 == 0:
+                        print(f"[tagexport] {written} geschrieben …")
+
+                except Exception as e:
+                    print(f"[tagexport][WARN] überspringe {rel_path}: {e}")
+                    skipped += 1
+                    continue
+
+        print(
+            f"[tagexport] fertig: {written} Datei(en) exportiert, {skipped} übersprungen")
 
 
 if __name__ == "__main__":
