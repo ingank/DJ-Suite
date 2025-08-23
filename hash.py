@@ -246,7 +246,6 @@ def main():
             print("[INFO] Keine Audiodateien gefunden.")
             exit(0)
 
-        missing = []
         results = []
 
         for relpath in files:
@@ -255,21 +254,16 @@ def main():
             hashval = get_tags(file, "MX-HASH")
             dt = time.perf_counter() - t0
 
-            # gewünschte Ausgabe pro Datei
+            # Ausgabe pro Datei
             print(f"[hash read] {dt:.4f}s {relpath}")
 
             if not hashval:
-                missing.append(relpath)
-            else:
-                results.append((hashval, relpath.as_posix()))
+                print(f"\n[ERROR] Datei ohne gültigen MX-HASH: {relpath}")
+                print(
+                    "[ABBRUCH] Vorgang sofort beendet. Keine Hash-Datei geschrieben.")
+                exit(1)
 
-        if missing:
-            print(
-                "\n[ERROR] Die folgenden Dateien haben keinen gültigen MX-HASH - Tag:")
-            for relpath in missing:
-                print(f"  - {relpath}")
-            print("\n[ABBRUCH] Vorgang wurde beendet. Keine Hash-Datei geschrieben.")
-            exit(1)
+            results.append((hashval, relpath.as_posix()))
 
         outfile = make_filename("hash-read")
         for line in write(outfile, iter(results)):
