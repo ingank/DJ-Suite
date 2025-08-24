@@ -2,10 +2,11 @@
 """audio.py – Zentrale Audiooperationen (Endformat: FLAC, Quelle: ".")"""
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from lib import flac, config
-from lib.utils import get_timestamp, find_audio_files
+from lib.utils import get_timestamp, find_audio_files, collect_audio_stats
 
 
 def main() -> None:
@@ -29,6 +30,37 @@ def main() -> None:
                    help="Exportiert alle Text-Tags aus .flac-Dateien"
                    "rekursiv ab aktuellem Verzeichnis "
                    "in eine NDJSON-Datei (audio-tagexport-<timestamp>.ndjson).")
+
+    p_count = sub.add_parser(
+        "count",
+        help="Zählt Audiodateien rekursiv und zeigt Statistiken/Dubletten."
+    )
+    p_count.add_argument(
+        "--ext",
+        nargs="+",
+        metavar="EXT",
+        help="Erlaubte Dateiendungen (z. B. .flac .wav). Überschreibt KNOWN_AUDIO_EXTENSIONS.",
+    )
+    p_count.add_argument(
+        "--json",
+        action="store_true",
+        help="Gibt die Statistik als JSON aus.",
+    )
+    p_count.add_argument(
+        "--duplicates-only",
+        action="store_true",
+        help="Nur Dublettenliste ausgeben.",
+    )
+    p_count.add_argument(
+        "--all-folders",
+        action="store_true",
+        help="Zeigt alle Ordner, auch ohne Treffer.",
+    )
+    grp_paths = p_count.add_mutually_exclusive_group()
+    grp_paths.add_argument("--absolute", action="store_true",
+                           help="Absolute Pfade in der Ausgabe.")
+    grp_paths.add_argument("--relative", action="store_true",
+                           help="Relative Pfade in der Ausgabe (Default).")
 
     args = parser.parse_args()
 
@@ -215,6 +247,65 @@ def main() -> None:
 
         print(
             f"[tagexport] fertig: {written} Datei(en) exportiert, {skipped} übersprungen")
+
+    elif args.command == "count":
+        # Endungen: Default KNOWN_AUDIO_EXTENSIONS; --ext überschreibt
+        if args.ext:
+            exts = {(e if e.startswith(".") else f".{e}").lower()
+                    for e in args.ext}
+        else:
+            exts = set(config.KNOWN_AUDIO_EXTENSIONS)
+
+        absolute = True if args.absolute and not args.relative else False
+
+        stats = collect_audio_stats(
+            root=".",
+            extensions=exts,
+            depth=args.depth,
+            absolute=absolute,
+            all_folders=args.all_folders,
+        )
+
+        if args.json:
+            print(json.dumps(stats, ensure_ascii=False, indent=2))
+            return
+
+        # Nur Dubletten?
+        if args.duplicates_only:
+            dups = stats.get("duplicates", {})
+            print("[count] Dubletten:")
+            if not dups:
+                print("[count]   keine Dubletten gefunden")
+            else:
+                for name in sorted(dups.keys()):
+                    print(f'  "{name}" in:')
+                    for p in dups[name]:
+                        print(f"    {p}")
+            return
+
+        # Menschliche Standardausgabe
+        print(f"\n[count] gesamt: {stats['total']} Datei(en)")
+
+        print("\n[count] pro Endung:")
+        for ext, num in stats["per_ext"].items():
+            print(f"  {ext:>6}: {num}")
+
+        print("\n[count] pro Ordner:")
+        if not stats["per_folder"]:
+            print("  (keine Ordner)")
+        else:
+            for folder, num in stats["per_folder"].items():
+                print(f"  {folder}: {num}")
+
+        dups = stats.get("duplicates", {})
+        print(f"\n[count] Dubletten-Gruppen: {len(dups)}")
+        if dups:
+            for name in sorted(dups.keys()):
+                print(f'  "{name}" in:')
+                for p in dups[name]:
+                    print(f"    {p}")
+
+        print()
 
 
 if __name__ == "__main__":

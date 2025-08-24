@@ -101,3 +101,90 @@ def loudness(file: Path) -> tuple[float | None, float | None]:
         if in_summary and (lufs is not None) and (lra is not None):
             break
     return lufs, lra
+
+
+def collect_audio_stats(root=".", extensions=None, depth=None, absolute=False, all_folders=False):
+    """
+    Zählt Audiodateien unterhalb von `root` in einem eigenen os.walk-Durchlauf.
+
+    Args:
+        root (str | Path): Startverzeichnis.
+        extensions (Iterable[str] | None): erlaubte Suffixe (inkl. führendem Punkt).
+            Default: lib.config.KNOWN_AUDIO_EXTENSIONS.
+        depth (int | None): maximale Tiefe relativ zu `root` (None = unbegrenzt).
+        absolute (bool): True = absolute Pfade in den Ergebnissen/Listen, sonst relative.
+        all_folders (bool): Wenn True, enthält per_folder auch Ordner mit 0 Treffern (bis depth).
+
+    Returns:
+        dict: {
+            "total": int,
+            "per_ext": dict[str, int],
+            "per_folder": dict[str, int],
+            "duplicates": dict[str, list[str]],
+        }
+    """
+    from lib.config import KNOWN_AUDIO_EXTENSIONS  # lazy import
+
+    root = Path(root).resolve()
+    if not root.exists():
+        raise FileNotFoundError(f"Startverzeichnis nicht gefunden: {root}")
+
+    # Ext-Menge normalisieren
+    exts = set(extensions or KNOWN_AUDIO_EXTENSIONS)
+    exts = {(e if str(e).startswith('.') else f'.{e}').lower() for e in exts}
+
+    total = 0
+    per_ext: dict[str, int] = {}
+    per_folder: dict[str, int] = {}
+    name_map: dict[str, list[str]] = {}
+
+    root_depth = len(root.parts)
+    seen_dirs: set[Path] = set()
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        curr_depth = len(Path(dirpath).parts) - root_depth
+        if depth is not None and curr_depth > depth:
+            dirnames[:] = []  # Abstieg stoppen
+            continue
+
+        dpath = Path(dirpath)
+        seen_dirs.add(dpath)
+
+        for name in filenames:
+            p = dpath / name
+            suffix = p.suffix.lower()
+            if suffix not in exts:
+                continue
+
+            total += 1
+            per_ext[suffix] = per_ext.get(suffix, 0) + 1
+
+            folder_key_path = p.parent
+            if absolute:
+                folder_key = str(folder_key_path)
+            else:
+                folder_key = str(folder_key_path.relative_to(
+                    root)) if folder_key_path != root else "."
+
+            per_folder[folder_key] = per_folder.get(folder_key, 0) + 1
+
+            stem_key = p.stem.casefold()
+            path_str = str(p) if absolute else str(p.relative_to(root))
+            name_map.setdefault(stem_key, []).append(path_str)
+
+    if all_folders:
+        for d in seen_dirs:
+            if absolute:
+                k = str(d)
+            else:
+                k = str(d.relative_to(root)) if d != root else "."
+            per_folder.setdefault(k, 0)
+
+    duplicates = {k: v for k, v in name_map.items() if len(v) > 1}
+
+    return {
+        "total": total,
+        "per_ext": dict(sorted(per_ext.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "per_folder": dict(sorted(per_folder.items(), key=lambda kv: kv[0])),
+        "duplicates": dict(sorted(duplicates.items(), key=lambda kv: kv[0])),
+    }
