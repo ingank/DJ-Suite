@@ -6,8 +6,11 @@ Subkommandos:
   - renum folders [PATH] [OPTIONS]
   - renum files   [PATH] [OPTIONS]
 
+Neu (optional):
+- `--recursive` nur für `folders`: rekursive Nummerierung in **Preorder (Depth-First)** über den gesamten Baum, mit durchgehender Sequenz. Standard bleibt nicht rekursiv.
+
 Eigenschaften
-- Nie rekursiv: arbeitet nur im angegebenen Verzeichnis
+- Nie rekursiv: arbeitet nur im angegebenen Verzeichnis (optional rekursiv **nur** für `folders` via `--recursive`)
 - Sortierung der Originalreihenfolge: Windows-„dir“-ähnlich (case-insensitiv, locale-basiert), ohne `dir` aufzurufen
 - Zielschema: "<ZAHL> FOO" (Ordner) bzw. "<ZAHL> FOO.ext" (Dateien)
 - Präfixentfernung: vorhandene führende Nummern plus Trennzeichen werden ersetzt
@@ -29,9 +32,10 @@ import platform
 import re
 import sys
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Iterable, Optional
 from uuid import uuid4
+from pathlib import Path
 
 # -----------------------------
 # Datenmodelle
@@ -53,6 +57,8 @@ class PlanItem:
     dst_name: str
     dst_path: str
     unchanged: bool
+    # relative Tiefe ab PATH (nur relevant für rekursives folders)
+    depth: int = 0
 
 # -----------------------------
 # Regex & Utilities
@@ -166,18 +172,19 @@ def valid_file_name(name: str) -> Tuple[bool, str]:
     return True, ''
 
 # -----------------------------
-# Scannen & Planung
+# Scannen & Planung (flat)
 # -----------------------------
 
 
 def collect_entries(path: str, include_hidden: bool, pattern: Optional[str], kind: str) -> List[Entry]:
-    """kind: 'folders' oder 'files'"""
+    """Nicht-rekursives Sammeln am Pfad."""
     entries: List[Entry] = []
     with os.scandir(path) as it:
         for de in it:
             if not include_hidden and is_hidden(de):
                 continue
             if pattern and not fnmatch.fnmatch(de.name, pattern):
+                # Für files/folders flat gilt: pattern filtert die Auswahl vollständig
                 continue
             if kind == 'folders':
                 if not de.is_dir(follow_symlinks=False):
@@ -188,12 +195,11 @@ def collect_entries(path: str, include_hidden: bool, pattern: Optional[str], kin
             elif kind == 'files':
                 if not de.is_file(follow_symlinks=False):
                     continue
-                rest_name = strip_prefix_file(de.name)  # enthält ext
+                rest_name = strip_prefix_file(de.name)
                 entries.append(Entry(de.name, os.path.join(
                     path, de.name), rest_name, False))
             else:
                 raise ValueError('unbekannter kind-Typ')
-    # Windows-„dir“-ähnliche Sortierung nach Originalnamen
     entries.sort(key=lambda e: windows_dir_sort_key(e.name))
     return entries
 
@@ -242,22 +248,103 @@ def precheck_existing(path: str, plan: List[PlanItem]) -> List[str]:
         p.dst_name for p in plan if p.dst_name in existing and p.dst_name not in planned_src]
     return conflicts
 
+
+def precheck_existing_recursive(plan: List[PlanItem]) -> List[Tuple[str, str]]:
+    """Konflikte pro Verzeichnis vorab prüfen.
+    Gibt Liste von (directory_path, conflicting_name).
+    """
+    conflicts: List[Tuple[str, str]] = []
+    # gruppiere plan items nach Zielverzeichnis des jeweiligen Items (basierend auf Originalpfaden der Eltern)
+    by_dir: Dict[str, List[PlanItem]] = {}
+    for p in plan:
+        dirpath = os.path.dirname(p.src_path)
+        by_dir.setdefault(dirpath, []).append(p)
+    for dirpath, items in by_dir.items():
+        try:
+            existing = set()
+            with os.scandir(dirpath) as it:
+                for de in it:
+                    existing.add(de.name)
+        except Exception:
+            continue
+        planned_src = {os.path.basename(p.src_path) for p in items}
+        for p in items:
+            if p.dst_name in existing and p.dst_name not in planned_src:
+                conflicts.append((dirpath, p.dst_name))
+    return conflicts
+
+# -----------------------------
+# Rekursives Sammeln & Planung für folders
+# -----------------------------
+
+
+def iter_dir_sorted(path: str, include_hidden: bool) -> List[os.DirEntry]:
+    entries = []
+    with os.scandir(path) as it:
+        for de in it:
+            if not include_hidden and is_hidden(de):
+                continue
+            if not de.is_dir(follow_symlinks=False):
+                continue
+            entries.append(de)
+    entries.sort(key=lambda d: windows_dir_sort_key(d.name))
+    return entries
+
+
+def collect_folders_recursive(root: str, include_hidden: bool) -> List[Tuple[str, str, int]]:
+    """Gibt eine Liste (path, name, depth) in Preorder zurück (Eltern vor Kindern)."""
+    out: List[Tuple[str, str, int]] = []
+
+    def _walk(cur: str, depth: int):
+        # Füge aktuelle Ebene (nur Unterordner von cur) sortiert hinzu
+        for de in iter_dir_sorted(cur, include_hidden):
+            out.append((de.path, de.name, depth))
+            # tiefer gehen
+            _walk(de.path, depth + 1)
+    _walk(root, 0)
+    return out
+
+
+def plan_folders_recursive(root: str, include_hidden: bool, pattern: Optional[str], start: int, step: int, width: int) -> List[PlanItem]:
+    preorder = collect_folders_recursive(root, include_hidden)
+    plan: List[PlanItem] = []
+    counter = 0
+    for full_path, name, depth in preorder:
+        # Nur umbenennen, wenn pattern None oder matcht; traversiert wird immer
+        will_rename = (pattern is None) or fnmatch.fnmatch(name, pattern)
+        if will_rename:
+            num = str(start + counter * step).zfill(width)
+            rest = strip_prefix_folder(name)
+            dst_name = f"{num} {rest}" if rest else num
+            dst_name = nfc(dst_name)
+            ok, reason = valid_dir_name(dst_name)
+            if not ok:
+                raise ValueError(
+                    f"Ungültiger Zielname für '{name}': '{dst_name}' ({reason})")
+        else:
+            dst_name = name  # unverändert
+        plan.append(PlanItem(src_path=full_path, src_name=name, dst_name=dst_name,
+                    dst_path='', unchanged=(dst_name == name), depth=depth))
+        counter += 1  # globale Sequenz, auch wenn Ordner selbst nicht umbenannt wird
+
+    # Nun Zielpfade berechnen: für jeden Knoten Pfad mit ggf. umbenannten Vorfahren
+    # Baue ein Mapping alter->PlanItem für schnellen Zugriff
+    by_path = {p.src_path: p for p in plan}
+    # Sortiere nach Pfadlänge aufsteigend, damit Eltern vor Kindern berechnet werden
+    for p in sorted(plan, key=lambda x: (x.depth, len(x.src_path))):
+        parent = os.path.dirname(p.src_path)
+        if parent == root:
+            dst_dir = root
+        else:
+            # Wir müssen den Zielpfad des Eltern-PlanItems finden
+            parent_item = by_path.get(parent)
+            dst_dir = parent_item.dst_path if parent_item else parent
+        p.dst_path = os.path.join(dst_dir, p.dst_name)
+    return plan
+
 # -----------------------------
 # Locks & Transaktion
 # -----------------------------
-
-
-def preflight_check_locks(plan: List[PlanItem], verbose: bool) -> Tuple[bool, str]:
-    for p in plan:
-        tmp = p.src_path + f".__probe__{uuid4().hex}"
-        try:
-            os.rename(p.src_path, tmp)
-            os.rename(tmp, p.src_path)
-            if verbose:
-                print(f"CHECK: {p.src_name} -> frei")
-        except Exception as e:
-            return False, f"Gesperrt/keine Rechte: {p.src_name} ({e})"
-    return True, ''
 
 
 def acquire_lock(lock_path: str) -> bool:
@@ -277,70 +364,103 @@ def release_lock(lock_path: str) -> None:
         pass
 
 
-def transactional_execute(plan: List[PlanItem], verbose: bool) -> None:
-    to_change = [p for p in plan if not p.unchanged]
+def transactional_execute(plan: List[PlanItem], verbose: bool, depth_sensitive: bool = False, base: Optional[str] = None) -> None:
+    """Zwei-Phasen-Umbenennung mit vollständigem Rollback.
+    - Phase A: in eindeutige Temp-Namen verschieben (rekursiv: leaf -> root)
+    - Phase B: Temp auf finale Namen (rekursiv: root -> leaf)
+    """
+    to_change = [
+        p for p in plan if not p.unchanged and p.src_path != p.dst_path]
     if not to_change:
         if verbose:
             print('Nichts zu ändern – Zielzustand bereits erreicht.')
         return
 
+    # Reihenfolge für Phase A
+    if depth_sensitive:
+        phaseA = sorted(to_change, key=lambda p: p.depth,
+                        reverse=True)  # leaf -> root
+    else:
+        phaseA = to_change
+
     temps: Dict[str, Tuple[str, PlanItem]] = {}
     try:
-        # Phase A: in eindeutige Temp-Namen verschieben
-        for p in to_change:
+        for p in phaseA:
             tmp_path = p.src_path + f".__renum_tmp__{uuid4().hex}"
+            src_disp = Path(os.path.relpath(p.src_path, base)).as_posix(
+            ) if base else Path(p.src_path).as_posix()
+            tmp_disp = Path(os.path.relpath(tmp_path, base)).as_posix(
+            ) if base else Path(tmp_path).as_posix()
             if verbose:
-                print(f"A: {p.src_name} -> {os.path.basename(tmp_path)}")
+                print(f"A: ./{src_disp} -> ./{tmp_disp}")
             os.rename(p.src_path, tmp_path)
             temps[p.src_path] = (tmp_path, p)
     except Exception as e:
         print(f"Fehler in Phase A: {e}", file=sys.stderr)
-        # Rollback A
+        # Rollback A (Temp -> Original)
         for src, (tmp, item) in list(temps.items())[::-1]:
+            tmp_disp = Path(os.path.relpath(tmp, base)).as_posix(
+            ) if base else Path(tmp).as_posix()
+            src_disp = Path(os.path.relpath(src, base)).as_posix(
+            ) if base else Path(src).as_posix()
+            if verbose:
+                print(f"Rollback A: ./{tmp_disp} -> ./{src_disp}")
             try:
-                if verbose:
-                    print(
-                        f"Rollback A: {os.path.basename(tmp)} -> {item.src_name}")
                 os.rename(tmp, src)
             except Exception as e2:
                 print(
-                    f"Rollback A FEHLGESCHLAGEN für {item.src_name}: {e2}", file=sys.stderr)
+                    f"Rollback A FEHLGESCHLAGEN für ./{src_disp}: {e2}", file=sys.stderr)
         raise
+
+    # Reihenfolge für Phase B
+    items_B = list(temps.items())
+    if depth_sensitive:
+        # root -> leaf
+        items_B = sorted(items_B, key=lambda kv: kv[1][1].depth)
 
     moved_final: List[Tuple[str, PlanItem]] = []
     try:
-        # Phase B: von Temp auf finale Namen
-        for src, (tmp, item) in temps.items():
+        for src, (tmp, item) in items_B:
+            dst_disp = Path(os.path.relpath(item.dst_path, base)).as_posix(
+            ) if base else Path(item.dst_path).as_posix()
+            tmp_disp = Path(os.path.relpath(tmp, base)).as_posix(
+            ) if base else Path(tmp).as_posix()
             if os.path.exists(item.dst_path):
                 raise FileExistsError(
-                    f"Ziel existiert unerwartet: {item.dst_name}")
+                    f"Ziel existiert unerwartet: ./{dst_disp}")
             if verbose:
-                print(f"B: {os.path.basename(tmp)} -> {item.dst_name}")
+                print(f"B: ./{tmp_disp} -> ./{dst_disp}")
             os.rename(tmp, item.dst_path)
             moved_final.append((item.dst_path, item))
     except Exception as e:
         print(f"Fehler in Phase B: {e}", file=sys.stderr)
-        # Rollback B
+        # Rollback B (final -> neue Temp) und dann Temp -> Original
         for dst, item in list(moved_final)[::-1]:
+            back_tmp = item.src_path + f".__renum_tmp__{uuid4().hex}"
+            dst_disp = Path(os.path.relpath(dst, base)).as_posix(
+            ) if base else Path(dst).as_posix()
+            back_disp = Path(os.path.relpath(back_tmp, base)).as_posix(
+            ) if base else Path(back_tmp).as_posix()
+            if verbose:
+                print(f"Rollback B1: ./{dst_disp} -> ./{back_disp}")
             try:
-                back_tmp = item.src_path + f".__renum_tmp__{uuid4().hex}"
-                if verbose:
-                    print(
-                        f"Rollback B1: {item.dst_name} -> {os.path.basename(back_tmp)}")
                 os.rename(dst, back_tmp)
                 temps[item.src_path] = (back_tmp, item)
             except Exception as e2:
                 print(
-                    f"Rollback B1 FEHLGESCHLAGEN für {item.dst_name}: {e2}", file=sys.stderr)
+                    f"Rollback B1 FEHLGESCHLAGEN für ./{dst_disp}: {e2}", file=sys.stderr)
         for src, (tmp, item) in list(temps.items())[::-1]:
+            tmp_disp = Path(os.path.relpath(tmp, base)).as_posix(
+            ) if base else Path(tmp).as_posix()
+            src_disp = Path(os.path.relpath(src, base)).as_posix(
+            ) if base else Path(src).as_posix()
+            if verbose:
+                print(f"Rollback B2: ./{tmp_disp} -> ./{src_disp}")
             try:
-                if verbose:
-                    print(
-                        f"Rollback B2: {os.path.basename(tmp)} -> {item.src_name}")
                 os.rename(tmp, src)
             except Exception as e3:
                 print(
-                    f"Rollback B2 FEHLGESCHLAGEN für {item.src_name}: {e3}", file=sys.stderr)
+                    f"Rollback B2 FEHLGESCHLAGEN für ./{src_disp}: {e3}", file=sys.stderr)
         raise
 
 # -----------------------------
@@ -358,12 +478,6 @@ def add_common_options(p: argparse.ArgumentParser) -> None:
                    help='Nur anzeigen, keine Änderungen')
     p.add_argument('--go', action='store_true',
                    help='Änderungen wirklich durchführen')
-    p.add_argument('--check-locks', action='store_true',
-                   help='Vorab Probe-Umbenennungen (langsamer)')
-    p.add_argument('--include-hidden', action='store_true',
-                   help='Auch versteckte Einträge einbeziehen')
-    p.add_argument(
-        '--pattern', help='Nur Namen passend zum GLOB-Muster (z. B. "*Projekt*")')
     p.add_argument('--verbose', action='store_true',
                    help='Ausführliche Ausgabe')
 
@@ -378,6 +492,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_folders = sub.add_parser('folders', help='Ordner umbenennen')
     add_common_options(p_folders)
+    p_folders.add_argument('--recursive', action='store_true',
+                           help='Rekursiv über Unterordner (Preorder, globale Sequenz)')
 
     p_files = sub.add_parser('files', help='Dateien umbenennen')
     add_common_options(p_files)
@@ -398,51 +514,72 @@ def run_folders(args: argparse.Namespace) -> int:
 
     base = os.path.abspath(args.path)
     if args.verbose:
-        print(f'Pfad: {base}')
+        cwd = os.getcwd()
+        base_disp = Path(os.path.relpath(base, cwd)).as_posix()
+        print(f'Pfad: ./{base_disp}')
 
     try:
-        entries = collect_entries(
-            base, args.include_hidden, args.pattern, kind='folders')
-    except FileNotFoundError:
-        print(f"Fehler: Pfad nicht gefunden: {base}", file=sys.stderr)
+        if args.recursive:
+            plan = plan_folders_recursive(
+                base, include_hidden=False, pattern=None, start=args.start, step=args.step, width=args.width)
+        else:
+            entries = collect_entries(
+                base, include_hidden=False, pattern=None, kind='folders')
+            if not entries:
+                print('Keine passenden Ordner gefunden.')
+                return 0
+            plan = plan_items(entries, args.start, args.step,
+                              args.width, kind='folders')
+    except (FileNotFoundError, PermissionError) as e:
+        print(f"Fehler beim Scannen: {e}", file=sys.stderr)
         return 1
-    except PermissionError:
-        print(f"Fehler: Keine Berechtigung für Pfad: {base}", file=sys.stderr)
-        return 1
-
-    if not entries:
-        print('Keine passenden Ordner gefunden.')
-        return 0
-
-    try:
-        plan = plan_items(entries, args.start, args.step,
-                          args.width, kind='folders')
     except ValueError as e:
         print(f'Fehler in Planung: {e}', file=sys.stderr)
         return 1
 
-    conflicts = precheck_existing(base, plan)
-    if conflicts:
-        print('Konflikt: Folgende Zielnamen existieren bereits:')
-        for n in conflicts:
-            print(f'  - {n}')
-        print('Abbruch ohne Änderungen.', file=sys.stderr)
-        return 1
+    # Konflikte prüfen
+    if args.recursive:
+        conflicts_pairs = precheck_existing_recursive(plan)
+        if conflicts_pairs:
+            print('Konflikt(e) gefunden (vorhandene Einträge blockieren Zielnamen):')
+            for dirpath, name in conflicts_pairs:
+                rel = Path(os.path.relpath(dirpath, base)).as_posix()
+                print(f'  [./{rel}] {name}')
+            print('Abbruch ohne Änderungen.', file=sys.stderr)
+            return 1
+    else:
+        conflicts = precheck_existing(base, plan)
+        if conflicts:
+            print('Konflikt: Folgende Zielnamen existieren bereits:')
+            for n in conflicts:
+                print(f'  - {n}')
+            print('Abbruch ohne Änderungen.', file=sys.stderr)
+            return 1
 
-    for item in plan:
-        prefix = 'DRY-RUN:' if args.dry_run else 'PLAN:'
-        print(f"{prefix} ./{item.src_name:<30} -> ./{item.dst_name}")
+    # Ausgabe
+    if args.recursive and args.dry_run:
+        # Flache Darstellung mit POSIX-relativen Pfaden (plattformneutral)
+        for p in plan:
+            rel_src = Path(os.path.relpath(p.src_path, base)).as_posix()
+            rel_dst = Path(os.path.relpath(p.dst_path, base)).as_posix()
+            print(f"DRY-RUN: ./{rel_src} -> ./{rel_dst}")
+        total = len(plan)
+        changed = sum(1 for p in plan if (not p.unchanged)
+                      or (p.src_path != p.dst_path))
+        print(
+            f"---{total} Ordner geprüft, Änderungen geplant: {changed}. Konflikte: 0")
+        return 0
+    else:
+        for item in plan:
+            prefix = 'DRY-RUN:' if args.dry_run else 'PLAN:'
+            print(f"{prefix} ./{item.src_name:<30} -> ./{item.dst_name}")
 
     if args.dry_run:
+        total = len(plan)
+        changed = sum(1 for p in plan if not p.unchanged)
         print(
-            f"---\n{len(plan)} Ordner geprüft, Änderungen geplant: {sum(1 for p in plan if not p.unchanged)}. Konflikte: 0")
+            f"---{total} Ordner geprüft, Änderungen geplant: {changed}. Konflikte: 0")
         return 0
-
-    if args.check_locks:
-        ok, reason = preflight_check_locks(plan, args.verbose)
-        if not ok:
-            print(f'Abbruch (Lock/Permission): {reason}', file=sys.stderr)
-            return 1
 
     lock_dir = os.path.join(base, '.renum.lock')
     if not acquire_lock(lock_dir):
@@ -451,7 +588,8 @@ def run_folders(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        transactional_execute(plan, args.verbose)
+        transactional_execute(plan, args.verbose,
+                              depth_sensitive=args.recursive, base=base)
     except Exception:
         print('Änderungen vollständig zurückgerollt (Fehler).', file=sys.stderr)
         release_lock(lock_dir)
@@ -469,7 +607,9 @@ def run_files(args: argparse.Namespace) -> int:
 
     base = os.path.abspath(args.path)
     if args.verbose:
-        print(f'Pfad: {base}')
+        cwd = os.getcwd()
+        base_disp = Path(os.path.relpath(base, cwd)).as_posix()
+        print(f'Pfad: ./{base_disp}')
 
     ext_filter: Optional[Iterable[str]] = None
     if args.ext:
@@ -479,7 +619,7 @@ def run_files(args: argparse.Namespace) -> int:
 
     try:
         entries_all = collect_entries(
-            base, args.include_hidden, args.pattern, kind='files')
+            base, include_hidden=False, pattern=None, kind='files')
     except FileNotFoundError:
         print(f"Fehler: Pfad nicht gefunden: {base}", file=sys.stderr)
         return 1
@@ -520,15 +660,11 @@ def run_files(args: argparse.Namespace) -> int:
         print(f"{prefix} ./{item.src_name:<30} -> ./{item.dst_name}")
 
     if args.dry_run:
+        total = len(plan)
+        changed = sum(1 for p in plan if not p.unchanged)
         print(
-            f"---\n{len(plan)} Dateien geprüft, Änderungen geplant: {sum(1 for p in plan if not p.unchanged)}. Konflikte: 0")
+            f"---{total} Dateien geprüft, Änderungen geplant: {changed}. Konflikte: 0")
         return 0
-
-    if args.check_locks:
-        ok, reason = preflight_check_locks(plan, args.verbose)
-        if not ok:
-            print(f'Abbruch (Lock/Permission): {reason}', file=sys.stderr)
-            return 1
 
     lock_dir = os.path.join(base, '.renum.lock')
     if not acquire_lock(lock_dir):
@@ -537,7 +673,7 @@ def run_files(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        transactional_execute(plan, args.verbose)
+        transactional_execute(plan, args.verbose, base=base)
     except Exception:
         print('Änderungen vollständig zurückgerollt (Fehler).', file=sys.stderr)
         release_lock(lock_dir)
