@@ -336,40 +336,49 @@ def remux(
     # 1) Cover-Erkennung (attached_pic vorhanden?)
     pic_index = _first_attached_pic_index(info)
 
-    if pic_index is not None:
-        # Pfad 1: vorhandenes Cover croppen + auf 600x600 skalieren und als attached_pic einbetten
-        _run([
-            "ffmpeg", "-v", "error",
-            "-i", str(src_path),
-            "-map_metadata", "0",
-            "-map", "0:a:0",
-            "-map", f"0:{pic_index}",
-            "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
-            "-disposition:v:0", "attached_pic",
-            "-c:a", "copy",
-            "-c:v", "mjpeg",
-            "-y", str(out_path)
-        ])
-        cover_source = "original"
-    else:
-        # Pfad 2: Platzhalter einbetten
-        placeholder = Path(config.EMPTY_COVER)
-        if not placeholder.exists():
-            raise RuntimeError(f"EMPTY_COVER nicht gefunden: {placeholder}")
-        _run([
-            "ffmpeg", "-v", "error",
-            "-i", str(src_path),
-            "-i", str(placeholder),
-            "-map_metadata", "0",
-            "-map", "0:a:0",
-            "-map", "1:v:0",
-            "-vf", "scale=600:600",
-            "-disposition:v:0", "attached_pic",
-            "-c:a", "copy",
-            "-c:v", "mjpeg",
-            "-y", str(out_path)
-        ])
-        cover_source = "placeholder"
+    # if pic_index is not None:
+    #     # Pfad 1: vorhandenes Cover croppen + auf 600x600 skalieren und als attached_pic einbetten
+    #     _run([
+    #         "ffmpeg", "-v", "error",
+    #         "-i", str(src_path),
+    #         "-map_metadata", "0",
+    #         "-map", "0:a:0",
+    #         "-map", f"0:{pic_index}",
+    #         "-vf", "crop='min(iw,ih)':'min(iw,ih)':'(iw-min(iw,ih))/2':'(ih-min(iw,ih))/2',scale=600:600",
+    #         "-disposition:v:0", "attached_pic",
+    #         "-c:a", "copy",
+    #         "-c:v", "mjpeg",
+    #         "-y", str(out_path)
+    #     ])
+    #     cover_source = "original"
+    # else:
+    #     # Pfad 2: Platzhalter einbetten
+    #     placeholder = Path(config.EMPTY_COVER)
+    #     if not placeholder.exists():
+    #         raise RuntimeError(f"EMPTY_COVER nicht gefunden: {placeholder}")
+    #     _run([
+    #         "ffmpeg", "-v", "error",
+    #         "-i", str(src_path),
+    #         "-i", str(placeholder),
+    #         "-map_metadata", "0",
+    #         "-map", "0:a:0",
+    #         "-map", "1:v:0",
+    #         "-vf", "scale=600:600",
+    #         "-disposition:v:0", "attached_pic",
+    #         "-c:a", "copy",
+    #         "-c:v", "mjpeg",
+    #         "-y", str(out_path)
+    #     ])
+    #     cover_source = "placeholder"
+
+    _run([
+        "ffmpeg", "-v", "error",
+        "-i", str(src_path),
+        "-c:a", "copy",
+        "-c:v", "copy",
+        "-y", str(out_path)
+    ])
+    cover_source = "original"
 
     # 3) COMMENT-Tag harmonisieren
     touch_comment_tag(out_path)
