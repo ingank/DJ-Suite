@@ -8,4 +8,11 @@
 | mx-lufs   | immer     | LUFS-Wert dieser Sounddatei                    |
 | mx-lra    | immer     | LRA-Wert dieser Sounddatei                     |
 | mx-genre  | workspace | Genre-Code in der Form "foo-bar-bazz"          |
-| mx-enegry | workspace | Energie des Tracks von 1 (LOW) bis 6 (INSANE)  |
+
+
+| tag       | Zeitpunkt  | Beschreibung                                   |
+|-----------|------------|------------------------------------------------|
+| rating    | one tagger | Energie des Tracks von 20 (LOW) bis 100 (HIGH) |
+| mood      | one tagger | Grundemotion, die der Track transportiert      |
+| mood=Tilt | one tagger | Risiko-Track: Alles oder Nichts (Lila)         |
+| grouping  | one tagger | Verschiedene Aspekte zum Eingruppieren         |

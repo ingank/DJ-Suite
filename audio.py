@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 from lib import flac, config
-from lib.utils import get_timestamp, find_audio_files, collect_audio_stats
+from lib.utils import get_timestamp, find_audio_files, collect_audio_stats, mirror_folder
 
 
 def main() -> None:
@@ -23,7 +23,15 @@ def main() -> None:
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("encode", help="bekanntes Format → FLAC (Archiv→Stage)")
-    sub.add_parser("remux", help="FLAC → FLAC (Blocklayout fix)")
+
+    # remux: jetzt mit --mirror
+    p_remux = sub.add_parser("remux", help="FLAC → FLAC (Blocklayout fix)")
+    p_remux.add_argument(
+        "--mirror",
+        action="store_true",
+        help="Nicht-FLACs per Robocopy spiegeln (Windows); FLACs werden remuxt.",
+    )
+
     sub.add_parser("finalize",
                    help="FLAC → FLAC 24bit/44.1kHz (Workspace→Bag)")
     sub.add_parser("tagexport",
@@ -106,6 +114,15 @@ def main() -> None:
 
         cwd = Path(".").resolve()
         stats = {"ok": 0}
+
+        # Optional: Non-FLACs spiegeln (Windows, Robocopy)
+        if getattr(args, "mirror", False):
+            try:
+                mirror_folder(Path("."), out_root, exclude_exts=[
+                              ".flac"], depth=args.depth)
+                print("[mirror] Nicht-FLACs gespiegelt (Robocopy).")
+            except Exception as e:
+                print(f"[mirror][WARN] {e}")
 
         for src in files:
             src_path = Path(src)

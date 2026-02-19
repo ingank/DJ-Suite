@@ -188,3 +188,92 @@ def collect_audio_stats(root=".", extensions=None, depth=None, absolute=False, a
         "per_folder": dict(sorted(per_folder.items(), key=lambda kv: kv[0])),
         "duplicates": dict(sorted(duplicates.items(), key=lambda kv: kv[0])),
     }
+
+
+def mirror_folder(src_dir, dst_dir, *, exclude_exts, depth: Optional[int] = None):
+    """
+    Spiegelt einen Ordner rekursiv per **Robocopy** nach `dst_dir`, schließt dabei
+    bestimmte Dateiendungen aus und übernimmt Daten, Attribute und Zeitstempel.
+
+    Args:
+        src_dir (str | Path): Quellordner.
+        dst_dir (str | Path): Zielordner.
+        exclude_exts (Iterable[str]): Liste von Endungen (mit führendem Punkt), die
+            NICHT kopiert/gelöscht werden sollen (z. B. [".flac"]).
+        depth (int | None): maximale Verzeichnistiefe relativ zu `src_dir`.
+            Wird auf Robocopy `/LEV:` gemappt (Robocopy zählt die Wurzelebene mit,
+            daher verwenden wir `depth + 1`).
+
+    Raises:
+        RuntimeError: wenn das OS nicht Windows ist, Robocopy nicht gefunden wird,
+                      das Ziel im Quellordner liegt oder Robocopy mit Fehler endet.
+    """
+    import shutil as _shutil
+    import platform as _platform
+    import subprocess as _subprocess
+
+    src_dir = Path(src_dir)
+    dst_dir = Path(dst_dir)
+
+    # Guards
+    if _platform.system().lower() != "windows":
+        raise RuntimeError("--mirror benötigt Robocopy unter Windows")
+    if _shutil.which("robocopy") is None:
+        raise RuntimeError("Robocopy nicht im PATH gefunden (erforderlich)")
+
+    # Sicherheitsgeländer: Ziel darf nicht innerhalb der Quelle liegen
+    try:
+        src_res = src_dir.resolve()
+        dst_res = dst_dir.resolve()
+        if str(dst_res).startswith(str(src_res) + os.sep):
+            raise RuntimeError(
+                "Zielordner darf nicht innerhalb des Quellordners liegen")
+    except Exception:
+        # Wenn resolve() fehlschlägt, lassen wir Robocopy später scheitern.
+        pass
+
+    dst_dir.mkdir(parents=True, exist_ok=True)
+
+    # robocopy <SRC> <DST> /MIR [/LEV:n] [/XF *.ext ...] + leise Flags
+    cmd = ["robocopy", str(src_dir), str(dst_dir), "/MIR"]
+
+    # Tiefe mappen: --depth=N -> /LEV:(N+1) (Robocopy zählt Wurzelebene als 1)
+    if depth is not None:
+        lev = max(0, int(depth)) + 1
+        cmd.append(f"/LEV:{lev}")
+
+    # Excludes: zu *.ext Maske transformieren
+    xf_parts = []
+    for ext in (exclude_exts or []):
+        ext = str(ext).strip()
+        if not ext:
+            continue
+        if not ext.startswith("."):
+            ext = "." + ext
+        xf_parts.append(f"*.{ext.lstrip('.')}")
+    if xf_parts:
+        cmd.append("/XF")
+        cmd.extend(xf_parts)
+
+    # Leise & deterministisch: keine Retries, keine Progress-Noise
+    cmd += ["/R:0", "/W:0", "/NFL", "/NDL", "/NJH", "/NJS", "/NP"]
+
+    # Ausführen
+    proc = _subprocess.run(cmd, capture_output=True, text=True)
+    rc = proc.returncode
+
+    # Robocopy: 0..7 = Erfolg, >7 = Fehler
+    if rc <= 7:
+        return {"ok": True, "exit_code": rc}
+
+    # Fehler – hilfreiche Meldung
+    msg = [
+        "Robocopy fehlgeschlagen",
+        f"ExitCode={rc}",
+        "Kommando: " + " ".join(cmd),
+    ]
+    if proc.stdout:
+        msg.append("STDOUT:\n" + proc.stdout)
+    if proc.stderr:
+        msg.append("STDERR:\n" + proc.stderr)
+    raise RuntimeError("\n".join(msg))
